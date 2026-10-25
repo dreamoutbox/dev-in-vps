@@ -84,16 +84,16 @@ A lightweight Go CLI tool (`dev-vps`) to provision, manage, SSH into, and destro
 
 ---
 
-### Phase 5: Server destruction command and lifecycle cleanup [STATUS: TODO]
+### Phase 5: Server destruction command and lifecycle cleanup [STATUS: DONE]
 - Goal: Implement `dev-vps destroy` command to delete VPS and clean up local tracking.
 - Tasks:
-  - [ ] Implement `dev-vps destroy <name-or-id>`:
+  - [x] Implement `dev-vps destroy <name-or-id>`:
     - Flags: `--force` / `-y` to skip confirmation prompt.
     - Resolve server by name or ID.
     - Prompt for confirmation before destruction when running interactively.
     - Call provider `DeleteServer` API.
     - Remove destroyed server from `~/.dev-vps/state.json`.
-  - [ ] Add unit test verifying state cleanup upon successful deletion.
+  - [x] Add unit test verifying state cleanup upon successful deletion.
 - Done when: `dev-vps destroy test-box -y` deletes the DO droplet and removes it from `~/.dev-vps/state.json`.
 
 ---

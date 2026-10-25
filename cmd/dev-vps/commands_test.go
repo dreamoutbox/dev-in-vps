@@ -288,3 +288,69 @@ func TestSSHConnectCommand(t *testing.T) {
 		t.Errorf("expected SSH target %s in arguments %+v", expectedTarget, executedArgs)
 	}
 }
+
+func TestDestroyCommand(t *testing.T) {
+	tempDir := filepath.Join(t.TempDir(), "test-home")
+	mock := newMockProvider()
+
+	oldFactory := providerFactory
+	providerFactory = func(cfg *config.Config) (provider.Provider, error) {
+		return mock, nil
+	}
+	defer func() { providerFactory = oldFactory }()
+
+	if err := config.InitStorage(tempDir); err != nil {
+		t.Fatalf("InitStorage failed: %v", err)
+	}
+
+	st, _ := config.LoadState(tempDir)
+	st.AddServer(config.ServerRecord{
+		ID:        "server-to-destroy",
+		Name:      "doomed-server",
+		Provider:  types.ProviderDigitalOcean,
+		Region:    "nyc1",
+		Size:      "s-2vcpu-4gb",
+		IPAddress: "203.0.113.99",
+		Status:    types.StatusActive,
+		CreatedAt: time.Now(),
+	})
+	_ = config.SaveState(tempDir, st)
+	mock.servers["server-to-destroy"] = &provider.ServerInfo{
+		ID:   "server-to-destroy",
+		Name: "doomed-server",
+	}
+
+	// 1. Without --force in non-interactive mode should fail
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "destroy", "doomed-server"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("expected error without --force in non-interactive mode, got nil")
+	}
+
+	// 2. With -y should succeed and remove from state and provider
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "destroy", "doomed-server", "-y"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("destroy doomed-server -y failed: %v", err)
+	}
+
+	// Verify server was removed from provider
+	if len(mock.deletedServer) != 1 || mock.deletedServer[0] != "server-to-destroy" {
+		t.Errorf("expected server-to-destroy to be deleted on provider, got %+v", mock.deletedServer)
+	}
+
+	// Verify server was removed from state
+	stReloaded, _ := config.LoadState(tempDir)
+	if _, found := stReloaded.GetServer("doomed-server"); found {
+		t.Errorf("expected doomed-server to be removed from local state")
+	}
+}

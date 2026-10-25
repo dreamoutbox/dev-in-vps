@@ -125,3 +125,32 @@ func TestBaseDirEnvOverride(t *testing.T) {
 		t.Errorf("expected BaseDir() to return %s, got %s", custom, got)
 	}
 }
+
+func TestValidateAndFixPermissions(t *testing.T) {
+	tempDir := t.TempDir()
+	if err := config.InitStorage(tempDir); err != nil {
+		t.Fatalf("InitStorage failed: %v", err)
+	}
+
+	privKey := config.SSHPrivateKeyPath(tempDir)
+	if err := os.WriteFile(privKey, []byte("secret"), 0666); err != nil {
+		t.Fatalf("failed to write key: %v", err)
+	}
+
+	sshDir := config.SSHDir(tempDir)
+	_ = os.Chmod(sshDir, 0755)
+
+	if err := config.ValidateAndFixPermissions(tempDir); err != nil {
+		t.Fatalf("ValidateAndFixPermissions failed: %v", err)
+	}
+
+	info, _ := os.Stat(sshDir)
+	if perm := info.Mode().Perm(); perm != 0700 {
+		t.Errorf("expected ssh dir perm 0700, got %04o", perm)
+	}
+
+	privInfo, _ := os.Stat(privKey)
+	if perm := privInfo.Mode().Perm(); perm != 0600 {
+		t.Errorf("expected private key perm 0600, got %04o", perm)
+	}
+}

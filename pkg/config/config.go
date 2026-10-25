@@ -98,7 +98,7 @@ func InitStorage(base string) error {
 		}
 	}
 
-	return nil
+	return ValidateAndFixPermissions(base)
 }
 
 // LoadConfig reads and parses config.json from the base directory.

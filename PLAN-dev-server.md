@@ -98,13 +98,13 @@ A lightweight Go CLI tool (`dev-vps`) to provision, manage, SSH into, and destro
 
 ---
 
-### Phase 6: End-to-end polish, error handling, and documentation [STATUS: TODO]
+### Phase 6: End-to-end polish, error handling, and documentation [STATUS: DONE]
 - Goal: Add validation, graceful error messages, and documentation.
 - Tasks:
-  - [ ] Handle missing API tokens, rate limits, and network failure modes with actionable error messages.
-  - [ ] Validate `~/.dev-vps/auto-setup/init.sh` and SSH key file permissions before operations.
-  - [ ] Write `README.md` covering prerequisites, setup, token configuration, interactive vs flag usage, and command reference.
-  - [ ] Run full test suite: `go test -v ./...`.
+  - [x] Handle missing API tokens, rate limits, and network failure modes with actionable error messages.
+  - [x] Validate `~/.dev-vps/auto-setup/init.sh` and SSH key file permissions before operations.
+  - [x] Write `README.md` covering prerequisites, setup, token configuration, interactive vs flag usage, and command reference.
+  - [x] Run full test suite: `go test -v ./...`.
 - Done when: All tests pass, build succeeds via `go build -o dev-vps ./cmd/dev-vps`, and CLI handles edge cases cleanly.
 
 ---

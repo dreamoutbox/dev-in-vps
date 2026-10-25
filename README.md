@@ -48,10 +48,21 @@ export DIGITALOCEAN_TOKEN="dop_v1_your_token_here"
 
 ---
 
-## Building the CLI
+## Building and Installation
 
+### Build Binary
+```bash
+./build.sh
+```
+Or with Go directly:
 ```bash
 go build -o dev-vps ./cmd/dev-vps
+```
+
+### Install Locally
+Builds the binary and installs it into `~/.local/bin/dev-vps`:
+```bash
+./local-install.sh
 ```
 
 ---

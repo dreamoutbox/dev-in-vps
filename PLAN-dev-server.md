@@ -116,3 +116,4 @@ A lightweight Go CLI tool (`dev-vps`) to provision, manage, SSH into, and destro
 - Assumption: Both `--region` and `--size` are optional on the command line; if omitted, the CLI defaults to interactive selection prompts; if provided via flags, the CLI runs headlessly without prompts.
 - Assumption: `auto-setup/init.sh` will be passed as cloud-init `user_data` during creation so execution begins immediately on first boot.
 - Risk: Cloud-init execution time varies depending on commands inside `init.sh`; SSH command can connect before `init.sh` finishes running. (Mitigation: Provide a message indicating cloud-init runs in background or add an optional wait flag).
+

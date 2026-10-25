@@ -20,10 +20,10 @@ A lightweight Go CLI tool (`dev-vps`) to provision, manage, SSH into, and destro
 
 ---
 
-### Phase 2: Cloud provider abstraction and DigitalOcean client [STATUS: TODO]
+### Phase 2: Cloud provider abstraction and DigitalOcean client [STATUS: DONE]
 - Goal: Define provider interface and implement DigitalOcean region/size fetching, droplet creation, SSH key synchronization, listing, and deletion.
 - Tasks:
-  - [ ] Define `Provider` interface:
+  - [x] Define `Provider` interface:
     - `ListRegions(ctx)`: returns available VPS regions (slug, name, availability).
     - `ListSizes(ctx, regionSlug)`: returns available VPS size slugs, vCPUs, RAM, disk, and price, filtered by region availability.
     - `EnsureSSHKey(ctx, name, publicKey)`: finds existing SSH key by fingerprint or creates a new key on DO via API, returning the key identifier.
@@ -31,9 +31,9 @@ A lightweight Go CLI tool (`dev-vps`) to provision, manage, SSH into, and destro
     - `ListServers(ctx)`: lists droplets matching dev-vps tag.
     - `GetServer(ctx, id)`: retrieves droplet status and public IPv4.
     - `DeleteServer(ctx, id)`: deletes droplet by ID.
-  - [ ] Implement DigitalOcean provider using DO API client.
-  - [ ] Implement token resolution: precedence order `DEV_VPS_DO_TOKEN` > `DIGITALOCEAN_TOKEN` > config file.
-  - [ ] Add unit tests with mock HTTP transport for DigitalOcean API interactions (region listing, size listing, SSH key check, droplet creation, and deletion).
+  - [x] Implement DigitalOcean provider using DO API client.
+  - [x] Implement token resolution: precedence order `DEV_VPS_DO_TOKEN` > `DIGITALOCEAN_TOKEN` > config file.
+  - [x] Add unit tests with mock HTTP transport for DigitalOcean API interactions (region listing, size listing, SSH key check, droplet creation, and deletion).
 - Done when: Provider tests pass with mock responses covering region and size queries, SSH key synchronization, droplet creation, and deletion.
 
 ---

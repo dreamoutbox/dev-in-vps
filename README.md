@@ -16,23 +16,6 @@ DigitalOcean is the initial cloud provider implemented behind an extensible prov
 
 ---
 
-## Storage Layout
-
-All persistent files are stored in `~/.dev-vps` (or overridden by the `DEV_VPS_HOME` environment variable):
-
-```
-~/.dev-vps/
-├── config.json            # Default provider, region, size, and optional API token
-├── state.json             # Local registry of active dev servers
-├── .ssh/
-│   ├── id_ed25519         # Private Ed25519 key (0600)
-│   └── id_ed25519.pub     # Public Ed25519 key (0644)
-└── auto-setup/
-    └── init.sh            # Bootstrap shell script executed on first boot (0755)
-```
-
----
-
 ## Prerequisites & Configuration
 
 ### DigitalOcean API Token
@@ -139,6 +122,23 @@ dev-vps destroy my-devbox -y
 
 ---
 
+## Storage Layout
+
+All persistent files are stored in `~/.dev-vps` (or overridden by the `DEV_VPS_HOME` environment variable):
+
+```
+~/.dev-vps/
+├── config.json            # Default provider, region, size, and optional API token
+├── state.json             # Local registry of active dev servers
+├── .ssh/
+│   ├── id_ed25519         # Private Ed25519 key (0600)
+│   └── id_ed25519.pub     # Public Ed25519 key (0644)
+└── auto-setup/
+    └── init.sh            # Bootstrap shell script executed on first boot (0755)
+```
+
+---
+
 ## Automated First-Boot Setup
 
 When a server is created, `~/.dev-vps/auto-setup/init.sh` is passed directly as cloud-init `user_data`. Customize this file to install packages, clone repositories, or configure development environments automatically on boot.
@@ -163,3 +163,4 @@ To bump version, create a release commit, and tag:
 ```
 
 Pushing a `v*` tag triggers the GitHub Actions CI workflow to test, cross-compile binaries for Linux and macOS (`amd64` and `arm64`), generate SHA256 checksums, and publish a GitHub Release.
+

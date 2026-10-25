@@ -48,21 +48,32 @@ export DIGITALOCEAN_TOKEN="dop_v1_your_token_here"
 
 ---
 
-## Building and Installation
+## Installation
 
-### Build Binary
+### Quick Install (GitHub Release)
+Install the latest release binary directly into `~/.local/bin/dev-vps`:
 ```bash
-./build.sh
-```
-Or with Go directly:
-```bash
-go build -o dev-vps ./cmd/dev-vps
+curl -fsSL https://raw.githubusercontent.com/dreamoutbox/dev-in-vps/main/install.sh | sh
 ```
 
-### Install Locally
-Builds the binary and installs it into `~/.local/bin/dev-vps`:
+Alternatively, download the target binary manually from GitHub Releases:
+```bash
+# Linux (x86_64 / amd64)
+curl -fsSL https://github.com/dreamoutbox/dev-in-vps/releases/latest/download/dev-vps-linux-amd64 -o ~/.local/bin/dev-vps && chmod +x ~/.local/bin/dev-vps
+
+# macOS (Apple Silicon arm64)
+curl -fsSL https://github.com/dreamoutbox/dev-in-vps/releases/latest/download/dev-vps-darwin-arm64 -o ~/.local/bin/dev-vps && chmod +x ~/.local/bin/dev-vps
+```
+
+### Build From Source
+Install into `~/.local/bin/dev-vps`:
 ```bash
 ./local-install.sh
+```
+
+Or build binary in the current directory:
+```bash
+./build.sh
 ```
 
 ---
@@ -131,3 +142,24 @@ dev-vps destroy my-devbox -y
 ## Automated First-Boot Setup
 
 When a server is created, `~/.dev-vps/auto-setup/init.sh` is passed directly as cloud-init `user_data`. Customize this file to install packages, clone repositories, or configure development environments automatically on boot.
+
+---
+
+## Release Workflow
+
+To bump version, create a release commit, and tag:
+```bash
+# Bump patch (e.g. 0.1.0 -> 0.1.1)
+./release.sh patch
+
+# Bump minor (e.g. 0.1.1 -> 0.2.0)
+./release.sh minor
+
+# Bump major (e.g. 0.2.0 -> 1.0.0)
+./release.sh major
+
+# Optionally push release and tags immediately to remote
+./release.sh patch --push
+```
+
+Pushing a `v*` tag triggers the GitHub Actions CI workflow to test, cross-compile binaries for Linux and macOS (`amd64` and `arm64`), generate SHA256 checksums, and publish a GitHub Release.

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
+	"github.com/dreamoutbox/dev-in-vps/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -24,9 +25,10 @@ var (
 //	_ = cmd.Execute()
 func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "dev-vps",
-		Short: "Provision and manage high-resource development VPS instances",
-		Long:  `dev-vps is a command-line tool to spin up development cloud servers for remote development workloads.`,
+		Use:     "dev-vps",
+		Version: version.Current(),
+		Short:   "Provision and manage high-resource development VPS instances",
+		Long:    `dev-vps is a command-line tool to spin up development cloud servers for remote development workloads.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if customBaseDir != "" {
 				_ = os.Setenv(config.EnvDevVPSHome, customBaseDir)

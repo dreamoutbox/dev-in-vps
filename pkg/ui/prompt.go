@@ -79,6 +79,17 @@ func SelectRegion(regions []provider.Region, defaultSlug string) (string, error)
 	return selected, nil
 }
 
+// formatMemory converts memory in megabytes to a formatted string.
+func formatMemory(mb int) string {
+	if mb >= 1024 && mb%1024 == 0 {
+		return fmt.Sprintf("%d GB", mb/1024)
+	}
+	if mb >= 1024 {
+		return fmt.Sprintf("%.1f GB", float64(mb)/1024)
+	}
+	return fmt.Sprintf("%d MB", mb)
+}
+
 // SelectSize presents a selection list of available compute sizes with specs and pricing.
 //
 // Input args:
@@ -97,13 +108,56 @@ func SelectSize(sizes []provider.Size, defaultSlug string) (string, error) {
 		return defaultSlug, fmt.Errorf("no sizes available")
 	}
 
+	type formattedSpec struct {
+		slug  string
+		vcpu  string
+		ram   string
+		disk  string
+		price string
+	}
+
+	specs := make([]formattedSpec, len(sizes))
+	maxSlugLen := 0
+	maxRAMLen := 0
+	maxDiskLen := 0
+	maxPriceLen := 0
+
+	for i, s := range sizes {
+		spec := formattedSpec{
+			slug:  s.Slug,
+			vcpu:  fmt.Sprintf("%2d vCPU", s.VCPUs),
+			ram:   formatMemory(s.MemoryMB),
+			disk:  fmt.Sprintf("%d GB", s.DiskGB),
+			price: fmt.Sprintf("$%0.2f/mo", s.PriceMonthly),
+		}
+		if len(spec.slug) > maxSlugLen {
+			maxSlugLen = len(spec.slug)
+		}
+		if len(spec.ram) > maxRAMLen {
+			maxRAMLen = len(spec.ram)
+		}
+		if len(spec.disk) > maxDiskLen {
+			maxDiskLen = len(spec.disk)
+		}
+		if len(spec.price) > maxPriceLen {
+			maxPriceLen = len(spec.price)
+		}
+		specs[i] = spec
+	}
+
 	options := make([]huh.Option[string], 0, len(sizes))
 	selected := defaultSlug
-
 	foundDefault := false
-	for _, s := range sizes {
-		label := fmt.Sprintf("%-16s | %2d vCPU | %5d MB RAM | %3d GB Disk | $%0.2f/mo",
-			s.Slug, s.VCPUs, s.MemoryMB, s.DiskGB, s.PriceMonthly)
+
+	for i, s := range sizes {
+		spec := specs[i]
+		label := fmt.Sprintf("%-*s | %s | %*s | %*s | %*s",
+			maxSlugLen, spec.slug,
+			spec.vcpu,
+			maxRAMLen, spec.ram,
+			maxDiskLen, spec.disk,
+			maxPriceLen, spec.price,
+		)
 		options = append(options, huh.NewOption(label, s.Slug))
 		if s.Slug == defaultSlug {
 			foundDefault = true
@@ -226,35 +280,36 @@ func SelectServer(servers []config.ServerRecord) (string, error) {
 	return selected, nil
 }
 
-// PromptConfirm prompts the user with a Yes/No confirmation dialog.
+// PromptSimpleConfirm presents a plain text confirmation prompt on stdout and reads user input from stdin.
 //
 // Input args:
-//   - title: confirmation question.
+//   - title: confirmation question to display.
 //
 // Returns:
-//   - bool: true if confirmed, false otherwise.
-//   - error: non-nil if prompt is cancelled.
+//   - bool: true if user answers 'y' or 'yes' (case-insensitive), false otherwise.
+//   - error: non-nil if input reading fails.
 //
 // Example:
 //
-//	confirmed, err := ui.PromptConfirm("Destroy server?")
-func PromptConfirm(title string) (bool, error) {
+//	confirmed, err := ui.PromptSimpleConfirm("Destroy server?")
+func PromptSimpleConfirm(title string) (bool, error) {
 	if !IsInteractive() {
 		return false, nil
 	}
 
-	var confirmed bool
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title(title).
-				Value(&confirmed),
-		),
-	)
-
-	if err := form.Run(); err != nil {
-		return false, fmt.Errorf("confirmation cancelled: %w", err)
+	fmt.Printf("%s [y/N]: ", title)
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() {
+		text := strings.ToLower(strings.TrimSpace(scanner.Text()))
+		return text == "y" || text == "yes", nil
 	}
+	if err := scanner.Err(); err != nil {
+		return false, fmt.Errorf("failed to read confirmation: %w", err)
+	}
+	return false, nil
+}
 
-	return confirmed, nil
+// PromptConfirm is a backwards-compatible alias for PromptSimpleConfirm.
+func PromptConfirm(title string) (bool, error) {
+	return PromptSimpleConfirm(title)
 }

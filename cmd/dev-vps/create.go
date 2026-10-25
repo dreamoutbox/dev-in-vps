@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
@@ -164,6 +165,15 @@ func runCreateServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save state: %w", err)
 	}
 
+	var reuseCmd strings.Builder
+	reuseCmd.WriteString(fmt.Sprintf("dev-vps create --name %s --region %s --size %s", activeInfo.Name, activeInfo.Region, activeInfo.Size))
+	if createInitScript != "" {
+		reuseCmd.WriteString(fmt.Sprintf(" --init-script %s", createInitScript))
+	}
+	if customBaseDir != "" {
+		reuseCmd.WriteString(fmt.Sprintf(" --home-dir %s", customBaseDir))
+	}
+
 	cmd.Printf("\nDev server created successfully!\n")
 	cmd.Printf("  Name:       %s\n", activeInfo.Name)
 	cmd.Printf("  Provider:   %s\n", activeInfo.Provider)
@@ -171,6 +181,7 @@ func runCreateServer(cmd *cobra.Command, args []string) error {
 	cmd.Printf("  Size:       %s\n", activeInfo.Size)
 	cmd.Printf("  IP Address: %s\n", activeInfo.IPAddress)
 	cmd.Printf("  Status:     %s\n\n", activeInfo.Status)
+	cmd.Printf("Create command for reuse:\n  %s\n\n", reuseCmd.String())
 	cmd.Printf("Connect to server:\n  dev-vps ssh %s\n", activeInfo.Name)
 
 	return nil

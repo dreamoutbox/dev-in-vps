@@ -67,4 +67,12 @@ func TestPromptConfirmNonInteractive(t *testing.T) {
 	if confirmed {
 		t.Errorf("expected non-interactive confirm to be false")
 	}
+
+	simpleConfirmed, err := ui.PromptSimpleConfirm("Simple confirm?")
+	if err != nil {
+		t.Fatalf("expected nil error, got: %v", err)
+	}
+	if simpleConfirmed {
+		t.Errorf("expected non-interactive simple confirm to be false")
+	}
 }

@@ -79,7 +79,7 @@ func runDestroyServer(cmd *cobra.Command, args []string) error {
 	// Confirmation check
 	if !destroyForce {
 		if ui.IsInteractive() {
-			confirmed, confirmErr := ui.PromptConfirm(fmt.Sprintf("Are you sure you want to permanently destroy server %s (ID: %s)?", targetName, targetID))
+			confirmed, confirmErr := ui.PromptSimpleConfirm(fmt.Sprintf("Are you sure you want to destroy server %s (ID: %s)?", targetName, targetID))
 			if confirmErr != nil {
 				return confirmErr
 			}

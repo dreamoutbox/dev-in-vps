@@ -154,6 +154,13 @@ func TestCreateServerCommand(t *testing.T) {
 		t.Fatalf("dev-vps create failed: %v", err)
 	}
 
+	if !bytes.Contains(buf.Bytes(), []byte("Create command for reuse:")) {
+		t.Errorf("expected reuse command in output, got: %s", buf.String())
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("dev-vps create --name alpha-box --region nyc1 --size s-2vcpu-4gb")) {
+		t.Errorf("expected exact reuse command args in output, got: %s", buf.String())
+	}
+
 	// Verify server was recorded in state
 	st, err := config.LoadState(tempDir)
 	if err != nil {

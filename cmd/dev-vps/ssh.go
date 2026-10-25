@@ -9,8 +9,19 @@ import (
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
 	"github.com/dreamoutbox/dev-in-vps/pkg/sshutil"
+	"github.com/dreamoutbox/dev-in-vps/pkg/ui"
 	"github.com/spf13/cobra"
 )
+
+// sshExecutor executes the system SSH binary.
+// Can be replaced in tests to verify arguments without opening a terminal.
+var sshExecutor = func(args []string) error {
+	sshProc := exec.Command("ssh", args...)
+	sshProc.Stdin = os.Stdin
+	sshProc.Stdout = os.Stdout
+	sshProc.Stderr = os.Stderr
+	return sshProc.Run()
+}
 
 // newSSHCmd constructs the ssh command group and subcommands.
 func newSSHCmd() *cobra.Command {
@@ -99,7 +110,13 @@ func runSSHConnect(cmd *cobra.Command, args []string) error {
 		targetIP = servers[0].IPAddress
 		targetName = servers[0].Name
 	} else {
-		return fmt.Errorf("multiple servers exist; specify a server name or ID: dev-vps ssh <name>")
+		chosenName, pickErr := ui.SelectServer(servers)
+		if pickErr != nil {
+			return pickErr
+		}
+		rec, _ := st.GetServer(chosenName)
+		targetIP = rec.IPAddress
+		targetName = rec.Name
 	}
 
 	if targetIP == "" {
@@ -119,10 +136,5 @@ func runSSHConnect(cmd *cobra.Command, args []string) error {
 		fmt.Sprintf("root@%s", targetIP),
 	}
 
-	sshProc := exec.Command("ssh", sshArgs...)
-	sshProc.Stdin = os.Stdin
-	sshProc.Stdout = os.Stdout
-	sshProc.Stderr = os.Stderr
-
-	return sshProc.Run()
+	return sshExecutor(sshArgs)
 }

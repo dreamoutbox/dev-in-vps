@@ -70,13 +70,13 @@ A lightweight Go CLI tool (`dev-vps`) to provision, manage, SSH into, and destro
 
 ---
 
-### Phase 4: Server listing and SSH connectivity commands [STATUS: TODO]
+### Phase 4: Server listing and SSH connectivity commands [STATUS: DONE]
 - Goal: Implement `dev-vps list` and `dev-vps ssh` commands using the managed SSH key.
 - Tasks:
-  - [ ] Implement `dev-vps list`:
+  - [x] Implement `dev-vps list`:
     - Display tabular output with Name, Provider, Server ID, Region, Size, IP Address, Status, Created At.
     - Support `--json` flag for machine-readable output.
-  - [ ] Implement `dev-vps ssh <name-or-id>`:
+  - [x] Implement `dev-vps ssh <name-or-id>`:
     - Resolve target server IP from local state or provider lookup.
     - If no target specified and only one server exists, auto-select it; if multiple exist, prompt for selection.
     - Hand off terminal to `ssh -i ~/.dev-vps/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new root@<ip>` via `os/exec` with `Stdin`, `Stdout`, `Stderr` attached.

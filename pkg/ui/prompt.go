@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/dreamoutbox/dev-in-vps/pkg/config"
 	"github.com/dreamoutbox/dev-in-vps/pkg/provider"
 	"golang.org/x/term"
 )
@@ -178,6 +179,51 @@ func PromptText(title string, defaultValue string) (string, error) {
 		return defaultValue, nil
 	}
 	return strings.TrimSpace(value), nil
+}
+
+// SelectServer presents an interactive selection list of active server instances.
+//
+// Input args:
+//   - servers: list of server records to choose from.
+//
+// Returns:
+//   - string: name of the chosen server.
+//   - error: non-nil if prompt is cancelled or input reading fails.
+//
+// Example:
+//
+//	chosen, err := ui.SelectServer(servers)
+func SelectServer(servers []config.ServerRecord) (string, error) {
+	if len(servers) == 0 {
+		return "", fmt.Errorf("no servers available")
+	}
+
+	options := make([]huh.Option[string], 0, len(servers))
+	for _, s := range servers {
+		label := fmt.Sprintf("%-14s | %s | %s | %s (%s)", s.Name, s.IPAddress, s.Size, s.Region, s.Status)
+		options = append(options, huh.NewOption(label, s.Name))
+	}
+
+	selected := servers[0].Name
+
+	if !IsInteractive() {
+		return selected, nil
+	}
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Select Server to Connect").
+				Options(options...).
+				Value(&selected),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return "", fmt.Errorf("server selection cancelled: %w", err)
+	}
+
+	return selected, nil
 }
 
 // PromptConfirm prompts the user with a Yes/No confirmation dialog.

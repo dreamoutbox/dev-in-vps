@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -165,5 +166,125 @@ func TestCreateServerCommand(t *testing.T) {
 	}
 	if rec.IPAddress != "198.51.100.25" || rec.Size != "s-2vcpu-4gb" {
 		t.Errorf("unexpected record saved: %+v", rec)
+	}
+}
+
+func TestListCommand(t *testing.T) {
+	tempDir := filepath.Join(t.TempDir(), "test-home")
+
+	// 1. List when empty
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "list"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+
+	if !bytes.Contains(buf.Bytes(), []byte("No active dev servers found")) {
+		t.Errorf("expected empty message, got: %s", buf.String())
+	}
+
+	// 2. Add server to state
+	st, err := config.LoadState(tempDir)
+	if err != nil {
+		t.Fatalf("failed to load state: %v", err)
+	}
+	st.AddServer(config.ServerRecord{
+		ID:        "srv-101",
+		Name:      "dev-worker",
+		Provider:  types.ProviderDigitalOcean,
+		Region:    "nyc1",
+		Size:      "s-2vcpu-4gb",
+		IPAddress: "203.0.113.55",
+		Status:    types.StatusActive,
+		CreatedAt: time.Now(),
+	})
+	_ = config.SaveState(tempDir, st)
+
+	// 3. Tabular list
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "list"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command with server failed: %v", err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("dev-worker")) || !bytes.Contains(buf.Bytes(), []byte("203.0.113.55")) {
+		t.Errorf("expected tabular output with dev-worker, got: %s", buf.String())
+	}
+
+	// 4. JSON list
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "list", "--json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list --json failed: %v", err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte(`"name": "dev-worker"`)) {
+		t.Errorf("expected JSON output with dev-worker, got: %s", buf.String())
+	}
+}
+
+func TestSSHConnectCommand(t *testing.T) {
+	tempDir := filepath.Join(t.TempDir(), "test-home")
+
+	// Ensure SSH key exists
+	if err := config.InitStorage(tempDir); err != nil {
+		t.Fatalf("InitStorage failed: %v", err)
+	}
+
+	privKeyPath := config.SSHPrivateKeyPath(tempDir)
+	_ = os.WriteFile(privKeyPath, []byte("fake-key"), 0600)
+
+	st, _ := config.LoadState(tempDir)
+	st.AddServer(config.ServerRecord{
+		ID:        "srv-202",
+		Name:      "remote-dev",
+		Provider:  types.ProviderDigitalOcean,
+		Region:    "nyc1",
+		Size:      "s-2vcpu-4gb",
+		IPAddress: "203.0.113.88",
+		Status:    types.StatusActive,
+		CreatedAt: time.Now(),
+	})
+	_ = config.SaveState(tempDir, st)
+
+	var executedArgs []string
+	oldSSH := sshExecutor
+	sshExecutor = func(args []string) error {
+		executedArgs = args
+		return nil
+	}
+	defer func() { sshExecutor = oldSSH }()
+
+	// Connect by name
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "remote-dev"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ssh remote-dev failed: %v", err)
+	}
+
+	expectedTarget := "root@203.0.113.88"
+	foundTarget := false
+	for _, arg := range executedArgs {
+		if arg == expectedTarget {
+			foundTarget = true
+			break
+		}
+	}
+	if !foundTarget {
+		t.Errorf("expected SSH target %s in arguments %+v", expectedTarget, executedArgs)
 	}
 }

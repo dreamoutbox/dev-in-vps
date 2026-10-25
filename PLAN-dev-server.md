@@ -38,19 +38,19 @@ A lightweight Go CLI tool (`dev-vps`) to provision, manage, SSH into, and destro
 
 ---
 
-### Phase 3: Interactive & flag-driven creation, SSH key management, and provisioning [STATUS: TODO]
+### Phase 3: Interactive & flag-driven creation, SSH key management, and provisioning [STATUS: DONE]
 - Goal: Implement `dev-vps create` supporting both non-interactive flags and interactive selection for region and size, plus SSH key auto-generation and droplet provisioning.
 - Tasks:
-  - [ ] Implement SSH key helper package:
+  - [x] Implement SSH key helper package:
     - Generate Ed25519 key pair and save to `~/.dev-vps/.ssh/id_ed25519` (`0600`) and `~/.dev-vps/.ssh/id_ed25519.pub` (`0644`).
     - Compute SSH public key fingerprint.
-  - [ ] Implement `dev-vps ssh create`:
+  - [x] Implement `dev-vps ssh create`:
     - Manually generates the SSH key pair under `~/.dev-vps/.ssh/` if not present.
     - Synchronizes the public key to DigitalOcean via `EnsureSSHKey`.
-  - [ ] Implement selection UI helper for interactive mode (e.g., using `charmbracelet/huh` or terminal selector):
+  - [x] Implement selection UI helper for interactive mode (e.g., using `charmbracelet/huh` or terminal selector):
     - Region picker: displays formatted regions (e.g. `nyc1 - New York 1`, `sfo3 - San Francisco 3`).
     - Size picker: displays formatted specs and price (e.g. `s-2vcpu-4gb - 2 vCPU, 4GB RAM, 80GB Disk ($24/mo)`).
-  - [ ] Implement `dev-vps create`:
+  - [x] Implement `dev-vps create`:
     - Flags: `--name`, `--region`, `--size`, `--init-script`.
     - Region resolution:
       - If `--region` flag is provided: validate against available DO regions.
@@ -62,8 +62,8 @@ A lightweight Go CLI tool (`dev-vps`) to provision, manage, SSH into, and destro
     - SSH key auto-setup: check `~/.dev-vps/.ssh/id_ed25519`, auto-create if missing, and sync to DO via `EnsureSSHKey`.
     - User-data script: read `~/.dev-vps/auto-setup/init.sh` (or `--init-script`) and embed into droplet request.
     - Provision droplet with selected region, size, and SSH key.
-  - [ ] Poll until server status is active and public IP is assigned.
-  - [ ] Save instance record (ID, name, region, size, IP, provider, created date) to `~/.dev-vps/state.json`.
+  - [x] Poll until server status is active and public IP is assigned.
+  - [x] Save instance record (ID, name, region, size, IP, provider, created date) to `~/.dev-vps/state.json`.
 - Done when:
   - Non-interactive creation works: `dev-vps create --name box1 --region nyc1 --size s-2vcpu-4gb` provisions immediately without prompts.
   - Interactive creation works: running `dev-vps create` presents an interactive region picker, followed by an interactive size picker, creates the droplet, and records state.

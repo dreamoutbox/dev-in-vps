@@ -26,8 +26,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "dev-vps",
 		Short: "Provision and manage high-resource development VPS instances",
-		Long: `dev-vps is a command-line tool to spin up, connect to, and destroy
-development cloud servers for remote development workloads.`,
+		Long:  `dev-vps is a command-line tool to spin up development cloud servers for remote development workloads.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if customBaseDir != "" {
 				_ = os.Setenv(config.EnvDevVPSHome, customBaseDir)
@@ -43,6 +42,9 @@ development cloud servers for remote development workloads.`,
 		"",
 		"custom configuration and state directory (default: ~/.dev-vps)",
 	)
+
+	rootCmd.AddCommand(newCreateCmd())
+	rootCmd.AddCommand(newSSHCmd())
 
 	return rootCmd
 }

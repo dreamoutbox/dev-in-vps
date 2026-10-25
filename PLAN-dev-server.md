@@ -5,17 +5,17 @@ A lightweight Go CLI tool (`dev-vps`) to provision, manage, SSH into, and destro
 
 ---
 
-### Phase 1: CLI scaffold, configuration, and local storage [STATUS: TODO]
+### Phase 1: CLI scaffold, configuration, and local storage [STATUS: DONE]
 - Goal: Set up project structure, CLI command routing, and `~/.dev-vps` configuration/state/SSH directory handling.
 - Tasks:
-  - [ ] Initialize CLI router (`cobra`) with root command and global flags.
-  - [ ] Define typed enums for provider types (`ProviderDigitalOcean`, etc.).
-  - [ ] Implement storage package managing `~/.dev-vps/`:
+  - [x] Initialize CLI router (`cobra`) with root command and global flags.
+  - [x] Define typed enums for provider types (`ProviderDigitalOcean`, etc.).
+  - [x] Implement storage package managing `~/.dev-vps/`:
     - `~/.dev-vps/config.json`: stores default provider, default region, DO API token reference.
     - `~/.dev-vps/state.json`: tracks provisioned dev servers locally.
     - `~/.dev-vps/.ssh/`: dedicated directory for CLI-managed SSH keys (permissions `0700`).
     - `~/.dev-vps/auto-setup/init.sh`: auto-creates default bootstrap shell script if not present.
-  - [ ] Add unit tests for storage and directory initialization.
+  - [x] Add unit tests for storage and directory initialization.
 - Done when: `go test ./...` passes; running `./dev-vps --help` displays command usage; directory structure at `~/.dev-vps/` (including `~/.dev-vps/.ssh/`) is automatically scaffolded on first execution.
 
 ---

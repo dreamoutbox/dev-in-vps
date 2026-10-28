@@ -150,14 +150,15 @@ func runCreateServer(cmd *cobra.Command, args []string) error {
 	}
 
 	rec := config.ServerRecord{
-		ID:        activeInfo.ID,
-		Name:      activeInfo.Name,
-		Provider:  activeInfo.Provider,
-		Region:    activeInfo.Region,
-		Size:      activeInfo.Size,
-		IPAddress: activeInfo.IPAddress,
-		Status:    activeInfo.Status,
-		CreatedAt: activeInfo.CreatedAt,
+		ID:               activeInfo.ID,
+		Name:             activeInfo.Name,
+		Provider:         activeInfo.Provider,
+		Region:           activeInfo.Region,
+		Size:             activeInfo.Size,
+		IPAddress:        activeInfo.IPAddress,
+		PrivateIPAddress: activeInfo.PrivateIPAddress,
+		Status:           activeInfo.Status,
+		CreatedAt:        activeInfo.CreatedAt,
 	}
 
 	st.AddServer(rec)
@@ -175,12 +176,15 @@ func runCreateServer(cmd *cobra.Command, args []string) error {
 	}
 
 	cmd.Printf("\nDev server created successfully!\n")
-	cmd.Printf("  Name:       %s\n", activeInfo.Name)
-	cmd.Printf("  Provider:   %s\n", activeInfo.Provider)
-	cmd.Printf("  Region:     %s\n", activeInfo.Region)
-	cmd.Printf("  Size:       %s\n", activeInfo.Size)
-	cmd.Printf("  IP Address: %s\n", activeInfo.IPAddress)
-	cmd.Printf("  Status:     %s\n\n", activeInfo.Status)
+	cmd.Printf("  Name:        %s\n", activeInfo.Name)
+	cmd.Printf("  Provider:    %s\n", activeInfo.Provider)
+	cmd.Printf("  Region:      %s\n", activeInfo.Region)
+	cmd.Printf("  Size:        %s\n", activeInfo.Size)
+	cmd.Printf("  IP Address:  %s\n", activeInfo.IPAddress)
+	if activeInfo.PrivateIPAddress != "" {
+		cmd.Printf("  Internal IP: %s\n", activeInfo.PrivateIPAddress)
+	}
+	cmd.Printf("  Status:      %s\n\n", activeInfo.Status)
 	cmd.Printf("Create command for reuse:\n  %s\n\n", reuseCmd.String())
 	cmd.Printf("Connect to server:\n  dev-vps ssh %s\n", activeInfo.Name)
 

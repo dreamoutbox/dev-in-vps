@@ -15,12 +15,12 @@ Add private/internal IPv4 tracking across the cloud provider layer, local state 
 
 ---
 
-### Phase 2: Internal IP Display in `create` and `list` Commands [STATUS: TODO]
+### Phase 2: Internal IP Display in `create` and `list` Commands [STATUS: DONE]
 - Goal: Surface the internal IP address in `dev-vps create` summary output and as a column in `dev-vps list`.
 - Tasks:
-  - [ ] Update `runCreateServer` in `cmd/dev-vps/create.go` to copy `activeInfo.PrivateIPAddress` into `config.ServerRecord` and print `Internal IP` alongside `IP Address` in the creation summary.
-  - [ ] Update `runListServers` in `cmd/dev-vps/list.go` to include the `INTERNAL IP` column in the tabular output (displaying `-` when empty for backward compatibility with older state entries).
-  - [ ] Update `mockProvider` and CLI tests in `cmd/dev-vps/commands_test.go` to assert `Internal IP` output in `dev-vps create` and `INTERNAL IP` column / JSON field in `dev-vps list`.
+  - [x] Update `runCreateServer` in `cmd/dev-vps/create.go` to copy `activeInfo.PrivateIPAddress` into `config.ServerRecord` and print `Internal IP` alongside `IP Address` in the creation summary.
+  - [x] Update `runListServers` in `cmd/dev-vps/list.go` to include the `INTERNAL IP` column in the tabular output (displaying `-` when empty for backward compatibility with older state entries).
+  - [x] Update `mockProvider` and CLI tests in `cmd/dev-vps/commands_test.go` to assert `Internal IP` output in `dev-vps create` and `INTERNAL IP` column / JSON field in `dev-vps list`.
 - Done when: `go test ./cmd/...` passes; `dev-vps create` prints the internal IP and `dev-vps list` displays the `INTERNAL IP` column.
 
 ---

@@ -50,20 +50,25 @@ func runListServers(cmd *cobra.Command, args []string) error {
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tPROVIDER\tID\tREGION\tSIZE\tIP ADDRESS\tSTATUS\tCREATED")
+	fmt.Fprintln(w, "NAME\tPROVIDER\tID\tREGION\tSIZE\tIP ADDRESS\tINTERNAL IP\tSTATUS\tCREATED")
 
 	for _, s := range servers {
 		createdStr := s.CreatedAt.Format(time.RFC3339)
 		if !s.CreatedAt.IsZero() {
 			createdStr = s.CreatedAt.Format("2006-01-02 15:04")
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		internalIP := s.PrivateIPAddress
+		if internalIP == "" {
+			internalIP = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			s.Name,
 			s.Provider,
 			s.ID,
 			s.Region,
 			s.Size,
 			s.IPAddress,
+			internalIP,
 			s.Status,
 			createdStr,
 		)

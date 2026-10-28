@@ -65,14 +65,15 @@ func (m *mockProvider) CreateServer(ctx context.Context, req provider.CreateServ
 	defer m.mu.Unlock()
 	m.createdReqs = append(m.createdReqs, req)
 	info := &provider.ServerInfo{
-		ID:        "server-999",
-		Name:      req.Name,
-		Provider:  types.ProviderDigitalOcean,
-		Region:    req.Region,
-		Size:      req.Size,
-		IPAddress: "198.51.100.25",
-		Status:    types.StatusActive,
-		CreatedAt: time.Now(),
+		ID:               "server-999",
+		Name:             req.Name,
+		Provider:         types.ProviderDigitalOcean,
+		Region:           req.Region,
+		Size:             req.Size,
+		IPAddress:        "198.51.100.25",
+		PrivateIPAddress: "10.132.0.8",
+		Status:           types.StatusActive,
+		CreatedAt:        time.Now(),
 	}
 	m.servers[info.ID] = info
 	return info, nil
@@ -173,8 +174,11 @@ func TestCreateServerCommand(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected alpha-box to be saved in state.json")
 	}
-	if rec.IPAddress != "198.51.100.25" || rec.Size != "s-2vcpu-4gb" {
+	if rec.IPAddress != "198.51.100.25" || rec.PrivateIPAddress != "10.132.0.8" || rec.Size != "s-2vcpu-4gb" {
 		t.Errorf("unexpected record saved: %+v", rec)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("Internal IP: 10.132.0.8")) {
+		t.Errorf("expected internal IP in create output, got: %s", buf.String())
 	}
 }
 
@@ -202,14 +206,15 @@ func TestListCommand(t *testing.T) {
 		t.Fatalf("failed to load state: %v", err)
 	}
 	st.AddServer(config.ServerRecord{
-		ID:        "srv-101",
-		Name:      "dev-worker",
-		Provider:  types.ProviderDigitalOcean,
-		Region:    "nyc1",
-		Size:      "s-2vcpu-4gb",
-		IPAddress: "203.0.113.55",
-		Status:    types.StatusActive,
-		CreatedAt: time.Now(),
+		ID:               "srv-101",
+		Name:             "dev-worker",
+		Provider:         types.ProviderDigitalOcean,
+		Region:           "nyc1",
+		Size:             "s-2vcpu-4gb",
+		IPAddress:        "203.0.113.55",
+		PrivateIPAddress: "10.132.0.12",
+		Status:           types.StatusActive,
+		CreatedAt:        time.Now(),
 	})
 	_ = config.SaveState(tempDir, st)
 
@@ -223,8 +228,8 @@ func TestListCommand(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("list command with server failed: %v", err)
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("dev-worker")) || !bytes.Contains(buf.Bytes(), []byte("203.0.113.55")) {
-		t.Errorf("expected tabular output with dev-worker, got: %s", buf.String())
+	if !bytes.Contains(buf.Bytes(), []byte("dev-worker")) || !bytes.Contains(buf.Bytes(), []byte("203.0.113.55")) || !bytes.Contains(buf.Bytes(), []byte("10.132.0.12")) {
+		t.Errorf("expected tabular output with dev-worker and internal IP, got: %s", buf.String())
 	}
 
 	// 4. JSON list

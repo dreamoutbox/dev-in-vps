@@ -35,4 +35,3 @@ jobs:
             dist/dev-vps-*
             dist/checksums.txt
           generate_release_notes: true
-

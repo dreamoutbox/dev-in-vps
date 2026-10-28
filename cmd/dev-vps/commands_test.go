@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -293,6 +295,79 @@ func TestSSHConnectCommand(t *testing.T) {
 	}
 	if !foundTarget {
 		t.Errorf("expected SSH target %s in arguments %+v", expectedTarget, executedArgs)
+	}
+
+	// Execute command on server and exit
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "remote-dev", "echo", "1"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ssh remote-dev echo 1 failed: %v", err)
+	}
+
+	if buf.Len() > 0 {
+		t.Errorf("expected no banner output on stdout when executing remote command, got: %s", buf.String())
+	}
+
+	if len(executedArgs) < 5 || executedArgs[len(executedArgs)-2] != "echo" || executedArgs[len(executedArgs)-1] != "1" {
+		t.Errorf("expected ['echo', '1'] at end of ssh args, got: %+v", executedArgs)
+	}
+
+	// Execute command with flags
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "remote-dev", "ls", "-la"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ssh remote-dev ls -la failed: %v", err)
+	}
+
+	if len(executedArgs) < 5 || executedArgs[len(executedArgs)-2] != "ls" || executedArgs[len(executedArgs)-1] != "-la" {
+		t.Errorf("expected ['ls', '-la'] at end of ssh args, got: %+v", executedArgs)
+	}
+
+	// Test ssh help output
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ssh --help failed: %v", err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("Connect directly to a provisioned dev server")) {
+		t.Errorf("expected help output, got: %s", buf.String())
+	}
+
+	// Test ssh error propagation
+	sshExecutor = func(args []string) error {
+		// Run a command that exits with status 1
+		proc := exec.Command("sh", "-c", "exit 1")
+		return proc.Run()
+	}
+
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "remote-dev", "false"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("expected error from failed remote command, got nil")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *exec.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
 	}
 }
 

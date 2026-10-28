@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,13 +25,22 @@ var sshExecutor = func(args []string) error {
 }
 
 // newSSHCmd constructs the ssh command group and subcommands.
+//
+// Returns:
+//   - *cobra.Command: ssh command configured with subcommands and flag handling.
+//
+// Example:
+//
+//	cmd := newSSHCmd()
 func newSSHCmd() *cobra.Command {
 	sshCmd := &cobra.Command{
-		Use:   "ssh [name-or-id]",
-		Short: "Connect to a running dev VPS instance via SSH",
-		Long: `Connect directly to a provisioned dev server using the managed SSH key.
+		Use:   "ssh [name-or-id] [command...]",
+		Short: "Connect to a running dev VPS instance via SSH or execute a command",
+		Long: `Connect directly to a provisioned dev server using the managed SSH key,
+or execute a command on the remote server and exit.
 If [name-or-id] is omitted and exactly one active server exists, it connects automatically.`,
-		RunE: runSSHConnect,
+		DisableFlagParsing: true,
+		RunE:               runSSHConnect,
 	}
 
 	sshCmd.AddCommand(newSSHCreateCmd())
@@ -39,6 +49,13 @@ If [name-or-id] is omitted and exactly one active server exists, it connects aut
 }
 
 // newSSHCreateCmd constructs the 'dev-vps ssh create' subcommand.
+//
+// Returns:
+//   - *cobra.Command: create subcommand for SSH key provisioning.
+//
+// Example:
+//
+//	cmd := newSSHCreateCmd()
 func newSSHCreateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "create",
@@ -50,6 +67,17 @@ and registers the public key with your configured cloud provider using their API
 }
 
 // runSSHCreate handles generating and synchronizing the SSH key.
+//
+// Input args:
+//   - cmd: the cobra command instance handling execution context and output.
+//   - args: command arguments passed to create subcommand (unused).
+//
+// Returns:
+//   - error: non-nil if SSH key generation or provider sync fails.
+//
+// Example:
+//
+//	err := runSSHCreate(cmd, []string{})
 func runSSHCreate(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
@@ -84,8 +112,28 @@ func runSSHCreate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runSSHConnect executes interactive SSH connection to the target instance.
+// runSSHConnect executes an interactive SSH session or runs a remote command and exits.
+//
+// Input args:
+//   - cmd: the cobra command instance handling execution context and output.
+//   - args: positional arguments where args[0] optionally specifies the server name or ID,
+//     and subsequent arguments specify the remote command to execute.
+//
+// Returns:
+//   - error: non-nil if server resolution, key verification, or SSH execution fails.
+//
+// Example:
+//
+//	// Connect interactively:
+//	err := runSSHConnect(cmd, []string{"dev1"})
+//
+//	// Execute remote command and exit:
+//	err := runSSHConnect(cmd, []string{"dev1", "echo", "1"})
 func runSSHConnect(cmd *cobra.Command, args []string) error {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		return cmd.Help()
+	}
+
 	st, err := config.LoadState(customBaseDir)
 	if err != nil {
 		return fmt.Errorf("failed to load state: %w", err)
@@ -98,6 +146,7 @@ func runSSHConnect(cmd *cobra.Command, args []string) error {
 
 	var targetIP string
 	var targetName string
+	var remoteCmd []string
 
 	if len(args) > 0 {
 		rec, found := st.GetServer(args[0])
@@ -106,6 +155,7 @@ func runSSHConnect(cmd *cobra.Command, args []string) error {
 		}
 		targetIP = rec.IPAddress
 		targetName = rec.Name
+		remoteCmd = args[1:]
 	} else if len(servers) == 1 {
 		targetIP = servers[0].IPAddress
 		targetName = servers[0].Name
@@ -128,13 +178,27 @@ func runSSHConnect(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("private SSH key not found at %s; run 'dev-vps ssh create' first", privKey)
 	}
 
-	cmd.Printf("Connecting to %s (%s)...\n", targetName, targetIP)
+	if len(remoteCmd) == 0 {
+		cmd.Printf("Connecting to %s (%s)...\n", targetName, targetIP)
+	}
 
 	sshArgs := []string{
 		"-i", privKey,
 		"-o", "StrictHostKeyChecking=accept-new",
 		fmt.Sprintf("root@%s", targetIP),
 	}
+	if len(remoteCmd) > 0 {
+		sshArgs = append(sshArgs, remoteCmd...)
+	}
 
-	return sshExecutor(sshArgs)
+	err = sshExecutor(sshArgs)
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			cmd.SilenceErrors = true
+			return exitErr
+		}
+		return err
+	}
+	return nil
 }

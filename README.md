@@ -97,6 +97,11 @@ Connect to a specific server by name or ID:
 dev-vps ssh my-devbox
 ```
 
+Execute a remote command and exit:
+```bash
+dev-vps ssh my-devbox echo 1
+```
+
 Auto-selects if only one active server exists, or opens an interactive picker if multiple exist:
 ```bash
 dev-vps ssh

@@ -221,6 +221,46 @@ func (c *Client) EnsureSSHKey(ctx context.Context, name string, publicKey string
 	return strconv.Itoa(newKey.ID), nil
 }
 
+// dropletToServerInfo transforms a DigitalOcean droplet into a common ServerInfo struct.
+//
+// Input args:
+//   - droplet: pointer to godo.Droplet to convert.
+//
+// Returns:
+//   - *provider.ServerInfo: converted server details.
+//
+// Example:
+//
+//	info := dropletToServerInfo(droplet)
+func dropletToServerInfo(droplet *godo.Droplet) *provider.ServerInfo {
+	if droplet == nil {
+		return nil
+	}
+	ip, _ := droplet.PublicIPv4()
+	privateIP, _ := droplet.PrivateIPv4()
+	createdAt, _ := time.Parse(time.RFC3339, droplet.Created)
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
+
+	regionSlug := ""
+	if droplet.Region != nil {
+		regionSlug = droplet.Region.Slug
+	}
+
+	return &provider.ServerInfo{
+		ID:               strconv.Itoa(droplet.ID),
+		Name:             droplet.Name,
+		Provider:         types.ProviderDigitalOcean,
+		Region:           regionSlug,
+		Size:             droplet.SizeSlug,
+		IPAddress:        ip,
+		PrivateIPAddress: privateIP,
+		Status:           mapDropletStatus(droplet.Status),
+		CreatedAt:        createdAt,
+	}
+}
+
 // CreateServer provisions a new Droplet with user-data, SSH key, and dev-vps tag.
 //
 // Input args:
@@ -266,22 +306,7 @@ func (c *Client) CreateServer(ctx context.Context, req provider.CreateServerRequ
 		return nil, fmt.Errorf("failed to create DigitalOcean droplet: %w", err)
 	}
 
-	ip, _ := droplet.PublicIPv4()
-	createdAt, _ := time.Parse(time.RFC3339, droplet.Created)
-	if createdAt.IsZero() {
-		createdAt = time.Now()
-	}
-
-	return &provider.ServerInfo{
-		ID:        strconv.Itoa(droplet.ID),
-		Name:      droplet.Name,
-		Provider:  types.ProviderDigitalOcean,
-		Region:    droplet.Region.Slug,
-		Size:      droplet.SizeSlug,
-		IPAddress: ip,
-		Status:    mapDropletStatus(droplet.Status),
-		CreatedAt: createdAt,
-	}, nil
+	return dropletToServerInfo(droplet), nil
 }
 
 // ListServers returns all droplets tagged with dev-vps.
@@ -305,21 +330,10 @@ func (c *Client) ListServers(ctx context.Context) ([]provider.ServerInfo, error)
 
 	result := make([]provider.ServerInfo, 0, len(droplets))
 	for _, d := range droplets {
-		ip, _ := d.PublicIPv4()
-		createdAt, _ := time.Parse(time.RFC3339, d.Created)
-		if createdAt.IsZero() {
-			createdAt = time.Now()
+		info := dropletToServerInfo(&d)
+		if info != nil {
+			result = append(result, *info)
 		}
-		result = append(result, provider.ServerInfo{
-			ID:        strconv.Itoa(d.ID),
-			Name:      d.Name,
-			Provider:  types.ProviderDigitalOcean,
-			Region:    d.Region.Slug,
-			Size:      d.SizeSlug,
-			IPAddress: ip,
-			Status:    mapDropletStatus(d.Status),
-			CreatedAt: createdAt,
-		})
 	}
 
 	return result, nil
@@ -349,22 +363,7 @@ func (c *Client) GetServer(ctx context.Context, id string) (*provider.ServerInfo
 		return nil, fmt.Errorf("failed to fetch droplet %d: %w", dropletID, err)
 	}
 
-	ip, _ := droplet.PublicIPv4()
-	createdAt, _ := time.Parse(time.RFC3339, droplet.Created)
-	if createdAt.IsZero() {
-		createdAt = time.Now()
-	}
-
-	return &provider.ServerInfo{
-		ID:        strconv.Itoa(droplet.ID),
-		Name:      droplet.Name,
-		Provider:  types.ProviderDigitalOcean,
-		Region:    droplet.Region.Slug,
-		Size:      droplet.SizeSlug,
-		IPAddress: ip,
-		Status:    mapDropletStatus(droplet.Status),
-		CreatedAt: createdAt,
-	}, nil
+	return dropletToServerInfo(droplet), nil
 }
 
 // DeleteServer destroys a droplet by its ID.

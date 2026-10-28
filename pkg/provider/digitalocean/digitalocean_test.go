@@ -128,6 +128,7 @@ func TestDigitalOceanProvider(t *testing.T) {
 			Networks: &godo.Networks{
 				V4: []godo.NetworkV4{
 					{IPAddress: "203.0.113.10", Type: "public"},
+					{IPAddress: "10.132.0.2", Type: "private"},
 				},
 			},
 			Tags:    []string{provider.DevVPSTag},
@@ -281,7 +282,7 @@ func TestDigitalOceanProvider(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetServer failed: %v", err)
 		}
-		if info.IPAddress != "203.0.113.10" || info.Status != types.StatusActive {
+		if info.IPAddress != "203.0.113.10" || info.PrivateIPAddress != "10.132.0.2" || info.Status != types.StatusActive {
 			t.Errorf("unexpected ServerInfo: %+v", info)
 		}
 	})

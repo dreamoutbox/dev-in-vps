@@ -45,14 +45,15 @@ type CreateServerRequest struct {
 
 // ServerInfo represents the current status and network details of a remote server.
 type ServerInfo struct {
-	ID        string             `json:"id"`
-	Name      string             `json:"name"`
-	Provider  types.ProviderType `json:"provider"`
-	Region    string             `json:"region"`
-	Size      string             `json:"size"`
-	IPAddress string             `json:"ip_address"`
-	Status    types.ServerStatus `json:"status"`
-	CreatedAt time.Time          `json:"created_at"`
+	ID               string             `json:"id"`
+	Name             string             `json:"name"`
+	Provider         types.ProviderType `json:"provider"`
+	Region           string             `json:"region"`
+	Size             string             `json:"size"`
+	IPAddress        string             `json:"ip_address"`
+	PrivateIPAddress string             `json:"private_ip_address"`
+	Status           types.ServerStatus `json:"status"`
+	CreatedAt        time.Time          `json:"created_at"`
 }
 
 // Provider defines the contract that cloud infrastructure adapters must implement.

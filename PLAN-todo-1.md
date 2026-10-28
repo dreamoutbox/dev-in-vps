@@ -5,12 +5,12 @@ Add private/internal IPv4 tracking across the cloud provider layer, local state 
 
 ---
 
-### Phase 1: Provider and State Internal IP Support [STATUS: TODO]
+### Phase 1: Provider and State Internal IP Support [STATUS: DONE]
 - Goal: Extend provider models, DigitalOcean adapter, and local state persistence to capture and store the server's private/internal IPv4 address.
 - Tasks:
-  - [ ] Add `PrivateIPAddress string` (`json:"private_ip_address"`) to `provider.ServerInfo` in `pkg/provider/provider.go` and `config.ServerRecord` in `pkg/config/state.go`.
-  - [ ] Extract a helper function in `pkg/provider/digitalocean/digitalocean.go` to map a `godo.Droplet` to `provider.ServerInfo` (eliminating duplicate mapping code across `CreateServer`, `ListServers`, and `GetServer`) and populate `PrivateIPAddress` via `droplet.PrivateIPv4()`.
-  - [ ] Update unit tests in `pkg/provider/digitalocean/digitalocean_test.go` and `pkg/config/config_test.go` to verify private IPv4 extraction and state serialization.
+  - [x] Add `PrivateIPAddress string` (`json:"private_ip_address"`) to `provider.ServerInfo` in `pkg/provider/provider.go` and `config.ServerRecord` in `pkg/config/state.go`.
+  - [x] Extract a helper function in `pkg/provider/digitalocean/digitalocean.go` to map a `godo.Droplet` to `provider.ServerInfo` (eliminating duplicate mapping code across `CreateServer`, `ListServers`, and `GetServer`) and populate `PrivateIPAddress` via `droplet.PrivateIPv4()`.
+  - [x] Update unit tests in `pkg/provider/digitalocean/digitalocean_test.go` and `pkg/config/config_test.go` to verify private IPv4 extraction and state serialization.
 - Done when: `go test ./pkg/...` passes and both public and private IPv4 addresses are populated from DigitalOcean API responses and persisted in `state.json`.
 
 ---

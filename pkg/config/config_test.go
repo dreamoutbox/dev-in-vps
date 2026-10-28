@@ -73,14 +73,15 @@ func TestStateManagement(t *testing.T) {
 	}
 
 	rec := config.ServerRecord{
-		ID:        "do-12345",
-		Name:      "dev-alpha",
-		Provider:  types.ProviderDigitalOcean,
-		Region:    "nyc1",
-		Size:      "s-2vcpu-4gb",
-		IPAddress: "192.0.2.1",
-		Status:    types.StatusActive,
-		CreatedAt: time.Now(),
+		ID:               "do-12345",
+		Name:             "dev-alpha",
+		Provider:         types.ProviderDigitalOcean,
+		Region:           "nyc1",
+		Size:             "s-2vcpu-4gb",
+		IPAddress:        "192.0.2.1",
+		PrivateIPAddress: "10.132.0.5",
+		Status:           types.StatusActive,
+		CreatedAt:        time.Now(),
 	}
 
 	st.AddServer(rec)
@@ -94,8 +95,8 @@ func TestStateManagement(t *testing.T) {
 	}
 
 	found, ok := reloaded.GetServer("dev-alpha")
-	if !ok || found.ID != "do-12345" {
-		t.Errorf("expected to find server by name, got %+v (ok=%v)", found, ok)
+	if !ok || found.ID != "do-12345" || found.PrivateIPAddress != "10.132.0.5" {
+		t.Errorf("expected to find server by name with private IP, got %+v (ok=%v)", found, ok)
 	}
 
 	foundByID, okByID := reloaded.GetServer("do-12345")

@@ -117,7 +117,7 @@ func runCreateServer(cmd *cobra.Command, args []string) error {
 
 	var userData string
 	if scriptData, readErr := os.ReadFile(initPath); readErr == nil {
-		userData = string(scriptData)
+		userData = config.EnsureStartupLogging(string(scriptData))
 	}
 
 	cmd.Printf("Creating %s instance (%s, %s) in %s...\n", serverName, prov.Type(), selectedSize, selectedRegion)

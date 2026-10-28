@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,6 +36,9 @@ func TestInitStorageAndConfig(t *testing.T) {
 	}
 	if len(content) == 0 {
 		t.Errorf("init.sh is empty")
+	}
+	if !strings.Contains(string(content), "/dev-vps/startup.log") {
+		t.Errorf("expected /dev-vps/startup.log in default init.sh, got: %s", string(content))
 	}
 
 	// Verify load config
@@ -153,5 +157,43 @@ func TestValidateAndFixPermissions(t *testing.T) {
 	privInfo, _ := os.Stat(privKey)
 	if perm := privInfo.Mode().Perm(); perm != 0600 {
 		t.Errorf("expected private key perm 0600, got %04o", perm)
+	}
+}
+
+func TestEnsureStartupLogging(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "empty input",
+			input:    "   ",
+			expected: "",
+		},
+		{
+			name:     "already contains logging redirection",
+			input:    "#!/bin/sh\nexec > /dev-vps/startup.log 2>&1\necho hi",
+			expected: "#!/bin/sh\nexec > /dev-vps/startup.log 2>&1\necho hi",
+		},
+		{
+			name:     "script with shebang",
+			input:    "#!/bin/bash\necho hello",
+			expected: "#!/bin/bash\nmkdir -p /dev-vps\nexec > /dev-vps/startup.log 2>&1\necho hello",
+		},
+		{
+			name:     "script without shebang",
+			input:    "echo hello",
+			expected: "mkdir -p /dev-vps\nexec > /dev-vps/startup.log 2>&1\necho hello",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := config.EnsureStartupLogging(tc.input)
+			if got != tc.expected {
+				t.Errorf("EnsureStartupLogging() =\n%q\nwant:\n%q", got, tc.expected)
+			}
+		})
 	}
 }

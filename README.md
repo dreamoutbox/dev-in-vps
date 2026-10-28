@@ -148,6 +148,11 @@ All persistent files are stored in `~/.dev-vps` (or overridden by the `DEV_VPS_H
 
 When a server is created, `~/.dev-vps/auto-setup/init.sh` is passed directly as cloud-init `user_data`. Customize this file to install packages, clone repositories, or configure development environments automatically on boot.
 
+All stdout and stderr output from the startup script is automatically piped to `/dev-vps/startup.log` inside the provisioned VPS for easy inspection. You can review the logs after connecting via SSH:
+```bash
+dev-vps ssh <server-name> cat /dev-vps/startup.log
+```
+
 ---
 
 ## Release Workflow

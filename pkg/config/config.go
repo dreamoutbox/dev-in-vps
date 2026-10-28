@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/types"
 )
@@ -32,10 +33,51 @@ func DefaultConfig() *Config {
 	}
 }
 
+// EnsureStartupLogging ensures the provided script directs stdout and stderr to /dev-vps/startup.log.
+//
+// Input args:
+//   - script: raw shell script string.
+//
+// Returns:
+//   - string: modified script with redirection header, or original if empty.
+//
+// Example:
+//
+//	userData := config.EnsureStartupLogging(script)
+func EnsureStartupLogging(script string) string {
+	trimmed := strings.TrimSpace(script)
+	if trimmed == "" {
+		return ""
+	}
+
+	if strings.Contains(script, "/dev-vps/startup.log") {
+		return script
+	}
+
+	loggingBoilerplate := "mkdir -p /dev-vps\nexec > /dev-vps/startup.log 2>&1\n"
+
+	lines := strings.Split(script, "\n")
+	if len(lines) > 0 && strings.HasPrefix(lines[0], "#!") {
+		// Insert after shebang line
+		var sb strings.Builder
+		sb.WriteString(lines[0])
+		sb.WriteString("\n")
+		sb.WriteString(loggingBoilerplate)
+		if len(lines) > 1 {
+			sb.WriteString(strings.Join(lines[1:], "\n"))
+		}
+		return sb.String()
+	}
+
+	return loggingBoilerplate + script
+}
+
 // defaultInitScriptContent returns the bootstrap shell script body for new installations.
 func defaultInitScriptContent() string {
 	return `#!/bin/sh
 set -eu
+mkdir -p /dev-vps
+exec > /dev-vps/startup.log 2>&1
 echo "dev-vps auto-setup: initializing server..."
 `
 }

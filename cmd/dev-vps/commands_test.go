@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -179,6 +180,13 @@ func TestCreateServerCommand(t *testing.T) {
 	}
 	if !bytes.Contains(buf.Bytes(), []byte("Internal IP: 10.132.0.8")) {
 		t.Errorf("expected internal IP in create output, got: %s", buf.String())
+	}
+
+	if len(mock.createdReqs) != 1 {
+		t.Fatalf("expected 1 create server request, got %d", len(mock.createdReqs))
+	}
+	if !strings.Contains(mock.createdReqs[0].UserData, "/dev-vps/startup.log") {
+		t.Errorf("expected user data to contain /dev-vps/startup.log, got: %s", mock.createdReqs[0].UserData)
 	}
 }
 

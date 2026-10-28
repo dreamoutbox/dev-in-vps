@@ -25,12 +25,12 @@ Add private/internal IPv4 tracking across the cloud provider layer, local state 
 
 ---
 
-### Phase 3: Pipe Startup Script Output to `/dev-vps/startup.log` [STATUS: TODO]
+### Phase 3: Pipe Startup Script Output to `/dev-vps/startup.log` [STATUS: DONE]
 - Goal: Ensure startup script execution redirects both stdout and stderr to `/dev-vps/startup.log` inside the VPS.
 - Tasks:
-  - [ ] Implement a user-data formatting helper that ensures `/dev-vps` exists (`mkdir -p /dev-vps`) and redirects stdout and stderr (`exec > /dev-vps/startup.log 2>&1`) for both default `init.sh` in `pkg/config/config.go` and custom `--init-script` scripts loaded in `cmd/dev-vps/create.go`.
-  - [ ] Add unit tests in `pkg/config/config_test.go` and `cmd/dev-vps/commands_test.go` verifying the startup script redirection to `/dev-vps/startup.log` is present in generated/submitted `UserData`.
-  - [ ] Update `README.md` to document `/dev-vps/startup.log` for inspecting first-boot setup logs and mark completed items in `TODO.md`.
+  - [x] Implement a user-data formatting helper that ensures `/dev-vps` exists (`mkdir -p /dev-vps`) and redirects stdout and stderr (`exec > /dev-vps/startup.log 2>&1`) for both default `init.sh` in `pkg/config/config.go` and custom `--init-script` scripts loaded in `cmd/dev-vps/create.go`.
+  - [x] Add unit tests in `pkg/config/config_test.go` and `cmd/dev-vps/commands_test.go` verifying the startup script redirection to `/dev-vps/startup.log` is present in generated/submitted `UserData`.
+  - [x] Update `README.md` to document `/dev-vps/startup.log` for inspecting first-boot setup logs and mark completed items in `TODO.md`.
 - Done when: `go test -v ./...` and `./build.sh` succeed, and any provisioned server's `UserData` logs all stdout/stderr to `/dev-vps/startup.log`.
 
 ---

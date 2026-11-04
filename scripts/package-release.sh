@@ -13,12 +13,15 @@ mkdir -p "${DIST_DIR}"
 VERSION="$(tr -d 'v \t\r\n' < VERSION 2>/dev/null || echo "0.1.0")"
 LDFLAGS="-s -w -X github.com/dreamoutbox/dev-in-vps/pkg/version.Version=${VERSION}"
 
-TARGETS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64"
+TARGETS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64"
 
 for target in $TARGETS; do
 	TARGET_OS="$(echo "$target" | cut -d/ -f1)"
 	TARGET_ARCH="$(echo "$target" | cut -d/ -f2)"
 	OUTPUT_NAME="dev-vps-${TARGET_OS}-${TARGET_ARCH}"
+	if [ "${TARGET_OS}" = "windows" ]; then
+		OUTPUT_NAME="${OUTPUT_NAME}.exe"
+	fi
 
 	echo "Building ${OUTPUT_NAME}..."
 	CGO_ENABLED=0 GOOS="${TARGET_OS}" GOARCH="${TARGET_ARCH}" go build -trimpath -ldflags="${LDFLAGS}" -o "${DIST_DIR}/${OUTPUT_NAME}" ./cmd/dev-vps

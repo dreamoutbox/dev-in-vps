@@ -12,13 +12,13 @@ Sorted by dependency: bug fix, then key commands (share a key-file helper), then
   - [x] Check `main.go` propagates the ssh exit code as the process exit code.
 - Done when: the new test passes and `go test ./cmd/...` is green. Manual check: `dev-vps ssh`, then `exit 3` or Ctrl+D, prints no usage text.
 
-### Phase 2: Shared SSH key file helper plus `ssh copy` command [STATUS: TODO]
+### Phase 2: Shared SSH key file helper plus `ssh copy` command [STATUS: DONE]
 - Goal: `dev-vps ssh copy [path]` copies the managed key pair to `path` (default: current dir).
 - Tasks:
-  - [ ] Add a helper in `pkg/sshutil/keys.go` that copies a key pair between directories. It sets perms 0600 for the private key and 0644 for the public key, and refuses to overwrite existing files unless `--force` is given. Phase 3 reuses it.
-  - [ ] Add `newSSHCopyCmd` in `cmd/dev-vps/ssh.go` and register it in `newSSHCmd`. It takes an optional path arg and a `--force` flag, fails if the managed key is missing (hint: `dev-vps ssh create`), and prints the destination paths.
-  - [ ] Unit tests for the helper in `pkg/sshutil/keys_test.go`: perms, default dir, overwrite refusal, missing source. CLI test in `commands_test.go`.
-  - [ ] Verify cobra routing: `ssh` uses `DisableFlagParsing`, so check that `ssh copy` and `ssh create` still dispatch to their subcommands.
+  - [x] Add a helper in `pkg/sshutil/keys.go` that copies a key pair between directories. It sets perms 0600 for the private key and 0644 for the public key, and refuses to overwrite existing files unless `--force` is given. Phase 3 reuses it.
+  - [x] Add `newSSHCopyCmd` in `cmd/dev-vps/ssh.go` and register it in `newSSHCmd`. It takes an optional path arg and a `--force` flag, fails if the managed key is missing (hint: `dev-vps ssh create`), and prints the destination paths.
+  - [x] Unit tests for the helper in `pkg/sshutil/keys_test.go`: perms, default dir, overwrite refusal, missing source. CLI test in `commands_test.go`.
+  - [x] Verify cobra routing: `ssh` uses `DisableFlagParsing`, so check that `ssh copy` and `ssh create` still dispatch to their subcommands.
 - Done when: tests pass and `dev-vps ssh copy /tmp/x` yields `id_ed25519` (0600) and `id_ed25519.pub` (0644) there.
 
 ### Phase 3: `ssh import` command (from `~/.ssh` to `~/.dev-vps/.ssh`) [STATUS: TODO]

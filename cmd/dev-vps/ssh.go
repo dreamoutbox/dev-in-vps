@@ -44,6 +44,7 @@ If [name-or-id] is omitted and exactly one active server exists, it connects aut
 	}
 
 	sshCmd.AddCommand(newSSHCreateCmd())
+	sshCmd.AddCommand(newSSHCopyCmd())
 
 	return sshCmd
 }
@@ -109,6 +110,71 @@ func runSSHCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	cmd.Printf("SSH key registered with %s (Key ID: %s)\n", prov.Type(), keyID)
+	return nil
+}
+
+// newSSHCopyCmd constructs the 'dev-vps ssh copy' subcommand.
+//
+// Returns:
+//   - *cobra.Command: copy subcommand for exporting the dev-vps SSH key pair.
+//
+// Example:
+//
+//	cmd := newSSHCopyCmd()
+func newSSHCopyCmd() *cobra.Command {
+	var force bool
+
+	copyCmd := &cobra.Command{
+		Use:   "copy [destination-path]",
+		Short: "Copy managed SSH key pair to the specified directory",
+		Long: `Copies the dev-vps SSH key pair (id_ed25519 and id_ed25519.pub) from ~/.dev-vps/.ssh/
+to the specified destination directory (defaults to current directory).`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSSHCopy(cmd, args, force)
+		},
+	}
+
+	copyCmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite destination files if they already exist")
+
+	return copyCmd
+}
+
+// runSSHCopy copies the managed dev-vps SSH key pair to a destination directory.
+//
+// Input args:
+//   - cmd: the cobra command instance handling execution context and output.
+//   - args: optional arguments where args[0] specifies the destination directory (defaults to ".").
+//   - force: whether to overwrite existing destination files.
+//
+// Returns:
+//   - error: non-nil if source keys are missing or copy fails.
+//
+// Example:
+//
+//	err := runSSHCopy(cmd, []string{"/tmp/keys"}, false)
+func runSSHCopy(cmd *cobra.Command, args []string, force bool) error {
+	dstDir := "."
+	if len(args) > 0 && args[0] != "" {
+		dstDir = args[0]
+	}
+
+	srcPriv := config.SSHPrivateKeyPath(customBaseDir)
+	srcPub := config.SSHPublicKeyPath(customBaseDir)
+
+	if _, err := os.Stat(srcPriv); os.IsNotExist(err) {
+		return fmt.Errorf("private SSH key not found at %s; run 'dev-vps ssh create' first", srcPriv)
+	}
+	if _, err := os.Stat(srcPub); os.IsNotExist(err) {
+		return fmt.Errorf("public SSH key not found at %s; run 'dev-vps ssh create' first", srcPub)
+	}
+
+	dstPriv, dstPub, err := sshutil.CopyKeyPairToDir(srcPriv, srcPub, dstDir, force)
+	if err != nil {
+		return err
+	}
+
+	cmd.Printf("Copied SSH key pair to %s:\n  Private: %s\n  Public:  %s\n", dstDir, dstPriv, dstPub)
 	return nil
 }
 

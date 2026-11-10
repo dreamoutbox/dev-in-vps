@@ -14,6 +14,7 @@ import (
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
 	"github.com/dreamoutbox/dev-in-vps/pkg/provider"
+	"github.com/dreamoutbox/dev-in-vps/pkg/sshutil"
 	"github.com/dreamoutbox/dev-in-vps/pkg/types"
 )
 
@@ -129,6 +130,76 @@ func TestSSHCreateCommand(t *testing.T) {
 
 	if len(mock.keysEnsured) == 0 {
 		t.Errorf("expected SSH key to be ensured on provider")
+	}
+}
+
+func TestSSHCopyCommand(t *testing.T) {
+	tempDir := filepath.Join(t.TempDir(), "test-home")
+	destDir := filepath.Join(t.TempDir(), "dest-keys")
+
+	// 1. Missing keys
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "copy", destDir})
+	if err := cmd.Execute(); err == nil {
+		t.Fatalf("expected error when managed SSH keys do not exist")
+	}
+
+	// 2. Generate keys
+	if _, _, _, _, err := sshutil.EnsureLocalSSHKey(tempDir); err != nil {
+		t.Fatalf("EnsureLocalSSHKey failed: %v", err)
+	}
+
+	// 3. Successful copy
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "copy", destDir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ssh copy failed: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Copied SSH key pair to") {
+		t.Errorf("expected copy success output, got: %s", buf.String())
+	}
+
+	// Verify copied files exist with correct permissions
+	privStat, err := os.Stat(filepath.Join(destDir, "id_ed25519"))
+	if err != nil {
+		t.Fatalf("copied private key not found: %v", err)
+	}
+	if perm := privStat.Mode().Perm(); perm != 0600 {
+		t.Errorf("expected private key perm 0600, got %04o", perm)
+	}
+
+	pubStat, err := os.Stat(filepath.Join(destDir, "id_ed25519.pub"))
+	if err != nil {
+		t.Fatalf("copied public key not found: %v", err)
+	}
+	if perm := pubStat.Mode().Perm(); perm != 0644 {
+		t.Errorf("expected public key perm 0644, got %04o", perm)
+	}
+
+	// 4. Overwrite refusal without --force
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "copy", destDir})
+	if err := cmd.Execute(); err == nil {
+		t.Fatalf("expected error when destination files already exist without --force")
+	}
+
+	// 5. Overwrite allowed with --force
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "copy", "--force", destDir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ssh copy with --force failed: %v", err)
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
@@ -36,4 +37,56 @@ func newProviderFromConfig(cfg *config.Config) (provider.Provider, error) {
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", cfg.DefaultProvider)
 	}
+}
+
+// ServerInfoToRecord converts a provider.ServerInfo model into a config.ServerRecord.
+//
+// Input args:
+//   - info: server information from cloud provider.
+//
+// Returns:
+//   - config.ServerRecord: local state server record representation.
+//
+// Example:
+//
+//	rec := ServerInfoToRecord(info)
+func ServerInfoToRecord(info provider.ServerInfo) config.ServerRecord {
+	return config.ServerRecord{
+		ID:               info.ID,
+		Name:             info.Name,
+		Provider:         info.Provider,
+		Region:           info.Region,
+		Size:             info.Size,
+		IPAddress:        info.IPAddress,
+		PrivateIPAddress: info.PrivateIPAddress,
+		Status:           info.Status,
+		CreatedAt:        info.CreatedAt,
+	}
+}
+
+// fetchRemoteServers queries the active cloud provider for all dev VPS instances.
+//
+// Input args:
+//   - ctx: context controlling timeout and cancellation.
+//   - baseDir: root configuration directory.
+//
+// Returns:
+//   - []provider.ServerInfo: list of active instances returned by provider API.
+//   - error: non-nil if config loading, provider initialization, or API call fails.
+//
+// Example:
+//
+//	servers, err := fetchRemoteServers(ctx, "")
+func fetchRemoteServers(ctx context.Context, baseDir string) ([]provider.ServerInfo, error) {
+	cfg, err := config.LoadConfig(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	prov, err := providerFactory(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return prov.ListServers(ctx)
 }

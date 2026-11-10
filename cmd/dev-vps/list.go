@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"text/tabwriter"
 	"time"
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
+	"github.com/dreamoutbox/dev-in-vps/pkg/provider"
 	"github.com/spf13/cobra"
 )
 
@@ -34,6 +36,16 @@ func runListServers(cmd *cobra.Command, args []string) error {
 	st, err := config.LoadState(customBaseDir)
 	if err != nil {
 		return fmt.Errorf("failed to load state: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
+	defer cancel()
+
+	remoteServers, fetchErr := fetchRemoteServers(ctx, customBaseDir)
+	if fetchErr != nil {
+		cmd.PrintErrf("Warning: failed to fetch live servers from provider (%v); displaying cached state\n", fetchErr)
+	} else if reconcileState(st, remoteServers) {
+		_ = config.SaveState(customBaseDir, st)
 	}
 
 	servers := st.ListServers()
@@ -75,4 +87,49 @@ func runListServers(cmd *cobra.Command, args []string) error {
 	}
 
 	return w.Flush()
+}
+
+// reconcileState synchronizes local state records with the remote provider's active server list.
+// It purges local entries that no longer exist remotely and updates or adds active remote instances.
+//
+// Input args:
+//   - st: local state instance to reconcile.
+//   - remoteServers: slice of active servers reported by the provider.
+//
+// Returns:
+//   - bool: true if state was modified and requires saving.
+//
+// Example:
+//
+//	changed := reconcileState(st, remoteServers)
+func reconcileState(st *config.State, remoteServers []provider.ServerInfo) bool {
+	remoteMap := make(map[string]provider.ServerInfo, len(remoteServers))
+	for _, r := range remoteServers {
+		remoteMap[r.ID] = r
+	}
+
+	changed := false
+
+	// Purge local records not present in the remote provider
+	for _, local := range st.ListServers() {
+		if _, exists := remoteMap[local.ID]; !exists {
+			st.RemoveServer(local.Name)
+			changed = true
+		}
+	}
+
+	// Add or update records from provider
+	for _, rem := range remoteServers {
+		rec := ServerInfoToRecord(rem)
+		localRec, exists := st.GetServer(rem.ID)
+		if !exists || localRec != rec {
+			if exists && localRec.Name != rec.Name {
+				st.RemoveServer(localRec.Name)
+			}
+			st.AddServer(rec)
+			changed = true
+		}
+	}
+
+	return changed
 }

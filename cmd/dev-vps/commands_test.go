@@ -345,8 +345,15 @@ func TestCreateServerCommand(t *testing.T) {
 
 func TestListCommand(t *testing.T) {
 	tempDir := filepath.Join(t.TempDir(), "test-home")
+	mock := newMockProvider()
 
-	// 1. List when empty
+	oldFactory := providerFactory
+	providerFactory = func(cfg *config.Config) (provider.Provider, error) {
+		return mock, nil
+	}
+	defer func() { providerFactory = oldFactory }()
+
+	// 1. List when empty remotely and locally
 	cmd := newRootCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
@@ -361,14 +368,10 @@ func TestListCommand(t *testing.T) {
 		t.Errorf("expected empty message, got: %s", buf.String())
 	}
 
-	// 2. Add server to state
-	st, err := config.LoadState(tempDir)
-	if err != nil {
-		t.Fatalf("failed to load state: %v", err)
-	}
-	st.AddServer(config.ServerRecord{
-		ID:               "srv-101",
-		Name:             "dev-worker",
+	// 2. Provider API-only server (created from another machine)
+	remoteServer := &provider.ServerInfo{
+		ID:               "srv-remote-1",
+		Name:             "remote-worker",
 		Provider:         types.ProviderDigitalOcean,
 		Region:           "nyc1",
 		Size:             "s-2vcpu-4gb",
@@ -376,10 +379,9 @@ func TestListCommand(t *testing.T) {
 		PrivateIPAddress: "10.132.0.12",
 		Status:           types.StatusActive,
 		CreatedAt:        time.Now(),
-	})
-	_ = config.SaveState(tempDir, st)
+	}
+	mock.servers[remoteServer.ID] = remoteServer
 
-	// 3. Tabular list
 	buf.Reset()
 	cmd = newRootCmd()
 	cmd.SetOut(buf)
@@ -387,13 +389,53 @@ func TestListCommand(t *testing.T) {
 	cmd.SetArgs([]string{"--home-dir", tempDir, "list"})
 
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("list command with server failed: %v", err)
+		t.Fatalf("list command with remote server failed: %v", err)
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("dev-worker")) || !bytes.Contains(buf.Bytes(), []byte("203.0.113.55")) || !bytes.Contains(buf.Bytes(), []byte("10.132.0.12")) {
-		t.Errorf("expected tabular output with dev-worker and internal IP, got: %s", buf.String())
+	if !bytes.Contains(buf.Bytes(), []byte("remote-worker")) || !bytes.Contains(buf.Bytes(), []byte("203.0.113.55")) || !bytes.Contains(buf.Bytes(), []byte("10.132.0.12")) {
+		t.Errorf("expected tabular output with remote-worker and internal IP, got: %s", buf.String())
 	}
 
-	// 4. JSON list
+	// Verify local state was synchronized from the provider API
+	st, err := config.LoadState(tempDir)
+	if err != nil {
+		t.Fatalf("failed to load state: %v", err)
+	}
+	if rec, found := st.GetServer("remote-worker"); !found || rec.ID != "srv-remote-1" {
+		t.Errorf("expected local state to be updated with remote-worker, got: %+v", rec)
+	}
+
+	// 3. Stale local server removal: add a stale server to local state that provider doesn't have
+	st.AddServer(config.ServerRecord{
+		ID:        "srv-stale-99",
+		Name:      "ghost-server",
+		Provider:  types.ProviderDigitalOcean,
+		Region:    "sfo3",
+		Size:      "s-1vcpu-1gb",
+		IPAddress: "198.51.100.99",
+		Status:    types.StatusActive,
+		CreatedAt: time.Now(),
+	})
+	_ = config.SaveState(tempDir, st)
+
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "list"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+	if bytes.Contains(buf.Bytes(), []byte("ghost-server")) {
+		t.Errorf("expected stale ghost-server to be purged, but it was present in output: %s", buf.String())
+	}
+
+	st, _ = config.LoadState(tempDir)
+	if _, found := st.GetServer("ghost-server"); found {
+		t.Errorf("expected ghost-server to be removed from local state file")
+	}
+
+	// 4. JSON list output
 	buf.Reset()
 	cmd = newRootCmd()
 	cmd.SetOut(buf)
@@ -403,8 +445,30 @@ func TestListCommand(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("list --json failed: %v", err)
 	}
-	if !bytes.Contains(buf.Bytes(), []byte(`"name": "dev-worker"`)) {
-		t.Errorf("expected JSON output with dev-worker, got: %s", buf.String())
+	if !bytes.Contains(buf.Bytes(), []byte(`"name": "remote-worker"`)) {
+		t.Errorf("expected JSON output with remote-worker, got: %s", buf.String())
+	}
+
+	// 5. Offline fallback: when provider call fails, cached state is retained and warning printed
+	providerFactory = func(cfg *config.Config) (provider.Provider, error) {
+		return nil, errors.New("simulated network failure")
+	}
+
+	outBuf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	cmd = newRootCmd()
+	cmd.SetOut(outBuf)
+	cmd.SetErr(errBuf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "list"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed during offline fallback: %v", err)
+	}
+	if !bytes.Contains(errBuf.Bytes(), []byte("Warning: failed to fetch live servers from provider")) {
+		t.Errorf("expected warning on stderr, got: %s", errBuf.String())
+	}
+	if !bytes.Contains(outBuf.Bytes(), []byte("remote-worker")) {
+		t.Errorf("expected cached remote-worker to be displayed during fallback, got: %s", outBuf.String())
 	}
 }
 

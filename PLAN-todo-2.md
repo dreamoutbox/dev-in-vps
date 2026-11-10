@@ -31,15 +31,15 @@ Sorted by dependency: bug fix, then key commands (share a key-file helper), then
   - [x] Tests using temp dirs: success, missing source, existing destination, `--force`, invalid key.
 - Done when: tests pass and an imported key is used by `dev-vps ssh` (`-i` path matches).
 
-### Phase 4: `list` fetches from the provider API [STATUS: TODO]
+### Phase 4: `list` fetches from the provider API [STATUS: DONE]
 - Goal: `dev-vps list` shows live provider data, so state from another machine is not stale.
 - Tasks:
-  - [ ] Extract a shared function (e.g. in `cmd/dev-vps/provider.go`) that loads config, builds the provider via `providerFactory`, and calls `ListServers`. `ListServers` already filters by `DevVPSTag`.
-  - [ ] Convert `provider.ServerInfo` to `config.ServerRecord` through one shared mapper. Reuse it in `create.go` if the mapping is duplicated there.
-  - [ ] Make `runListServers` use the API result for display. Show the same columns and keep `--json`.
-  - [ ] Reconcile local state with the API result: add servers seen only in the API, and drop local entries that no longer exist remotely. Then save, so `ssh` and `destroy` also work on servers created from another machine. Decide the final semantics for this step.
-  - [ ] Add an offline fallback: if the API call fails, warn and show the cached state.
-  - [ ] Update `mockProvider` and the list tests in `commands_test.go`: API-only server shown, stale local server removed, API error fallback, JSON output.
+  - [x] Extract a shared function (e.g. in `cmd/dev-vps/provider.go`) that loads config, builds the provider via `providerFactory`, and calls `ListServers`. `ListServers` already filters by `DevVPSTag`.
+  - [x] Convert `provider.ServerInfo` to `config.ServerRecord` through one shared mapper. Reuse it in `create.go` if the mapping is duplicated there.
+  - [x] Make `runListServers` use the API result for display. Show the same columns and keep `--json`.
+  - [x] Reconcile local state with the API result: add servers seen only in the API, and drop local entries that no longer exist remotely. Then save, so `ssh` and `destroy` also work on servers created from another machine. Decide the final semantics for this step.
+  - [x] Add an offline fallback: if the API call fails, warn and show the cached state.
+  - [x] Update `mockProvider` and the list tests in `commands_test.go`: API-only server shown, stale local server removed, API error fallback, JSON output.
 - Done when: `go test ./...` passes and `dev-vps list` on a machine with empty state shows existing tagged droplets.
 
 ## Unknowns, risks, assumptions

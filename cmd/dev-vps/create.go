@@ -149,17 +149,7 @@ func runCreateServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load state: %w", err)
 	}
 
-	rec := config.ServerRecord{
-		ID:               activeInfo.ID,
-		Name:             activeInfo.Name,
-		Provider:         activeInfo.Provider,
-		Region:           activeInfo.Region,
-		Size:             activeInfo.Size,
-		IPAddress:        activeInfo.IPAddress,
-		PrivateIPAddress: activeInfo.PrivateIPAddress,
-		Status:           activeInfo.Status,
-		CreatedAt:        activeInfo.CreatedAt,
-	}
+	rec := ServerInfoToRecord(*activeInfo)
 
 	st.AddServer(rec)
 	if err := config.SaveState(customBaseDir, st); err != nil {

@@ -382,6 +382,9 @@ func TestSSHConnectCommand(t *testing.T) {
 	if exitErr.ExitCode() != 1 {
 		t.Errorf("expected exit code 1, got %d", exitErr.ExitCode())
 	}
+	if strings.Contains(buf.String(), "Usage:") {
+		t.Errorf("expected no usage help text when SSH session exits with error, got: %s", buf.String())
+	}
 }
 
 func TestDestroyCommand(t *testing.T) {

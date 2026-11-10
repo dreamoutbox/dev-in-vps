@@ -4,12 +4,12 @@ Build/test: `go build ./...` and `go test ./...`.
 
 Sorted by dependency: bug fix, then key commands (share a key-file helper), then the list/API change, which is the largest behavior change.
 
-### Phase 1: Fix `dev-vps ssh` printing usage after remote exit [STATUS: TODO]
+### Phase 1: Fix `dev-vps ssh` printing usage after remote exit [STATUS: DONE]
 - Goal: A non-zero ssh exit (e.g. Ctrl+D after a failed last command) must not print cobra usage/help.
 - Tasks:
-  - [ ] Reproduce with a test in `cmd/dev-vps/commands_test.go`: `sshExecutor` returns an `*exec.ExitError`; assert no usage text in output.
-  - [ ] Set `cmd.SilenceUsage = true` in `runSSHConnect` once args and state are validated, just before `sshExecutor` runs. Early errors such as an unknown server keep their usage output.
-  - [ ] Check `main.go` propagates the ssh exit code as the process exit code.
+  - [x] Reproduce with a test in `cmd/dev-vps/commands_test.go`: `sshExecutor` returns an `*exec.ExitError`; assert no usage text in output.
+  - [x] Set `cmd.SilenceUsage = true` in `runSSHConnect` once args and state are validated, just before `sshExecutor` runs. Early errors such as an unknown server keep their usage output.
+  - [x] Check `main.go` propagates the ssh exit code as the process exit code.
 - Done when: the new test passes and `go test ./cmd/...` is green. Manual check: `dev-vps ssh`, then `exit 3` or Ctrl+D, prints no usage text.
 
 ### Phase 2: Shared SSH key file helper plus `ssh copy` command [STATUS: TODO]

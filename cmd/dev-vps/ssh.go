@@ -191,6 +191,10 @@ func runSSHConnect(cmd *cobra.Command, args []string) error {
 		sshArgs = append(sshArgs, remoteCmd...)
 	}
 
+	// Silence cobra usage output once arguments and credentials are confirmed valid,
+	// ensuring exit statuses from ssh sessions do not trigger usage/help printing.
+	cmd.SilenceUsage = true
+
 	err = sshExecutor(sshArgs)
 	if err != nil {
 		var exitErr *exec.ExitError

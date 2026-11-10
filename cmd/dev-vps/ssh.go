@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
@@ -45,6 +47,7 @@ If [name-or-id] is omitted and exactly one active server exists, it connects aut
 
 	sshCmd.AddCommand(newSSHCreateCmd())
 	sshCmd.AddCommand(newSSHCopyCmd())
+	sshCmd.AddCommand(newSSHImportCmd())
 
 	return sshCmd
 }
@@ -175,6 +178,124 @@ func runSSHCopy(cmd *cobra.Command, args []string, force bool) error {
 	}
 
 	cmd.Printf("Copied SSH key pair to %s:\n  Private: %s\n  Public:  %s\n", dstDir, dstPriv, dstPub)
+	return nil
+}
+
+// newSSHImportCmd constructs the 'dev-vps ssh import' subcommand.
+//
+// Returns:
+//   - *cobra.Command: import subcommand for adopting an existing SSH key pair.
+//
+// Example:
+//
+//	cmd := newSSHImportCmd()
+func newSSHImportCmd() *cobra.Command {
+	var force bool
+
+	importCmd := &cobra.Command{
+		Use:   "import [key-path]",
+		Short: "Import existing SSH key pair into dev-vps managed storage",
+		Long: `Imports an existing SSH key pair from ~/.ssh/ (default: ~/.ssh/id_ed25519)
+or a specified private key path into ~/.dev-vps/.ssh/.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSSHImport(cmd, args, force)
+		},
+	}
+
+	importCmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite managed key files if they already exist")
+
+	return importCmd
+}
+
+// resolveImportKeyPaths determines source private and public key paths from user input.
+//
+// Input args:
+//   - arg: user-supplied key path or empty string for default ~/.ssh/id_ed25519.
+//
+// Returns:
+//   - privPath: determined private key path.
+//   - pubPath: determined public key path.
+//   - error: non-nil if home directory cannot be resolved.
+//
+// Example:
+//
+//	priv, pub, err := resolveImportKeyPaths("~/.ssh/id_ed25519")
+func resolveImportKeyPaths(arg string) (string, string, error) {
+	if arg == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", "", fmt.Errorf("failed to resolve user home directory: %w", err)
+		}
+		arg = filepath.Join(home, ".ssh", "id_ed25519")
+	}
+
+	if strings.HasPrefix(arg, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", "", fmt.Errorf("failed to resolve user home directory: %w", err)
+		}
+		arg = filepath.Join(home, arg[2:])
+	}
+
+	var privPath, pubPath string
+	if strings.HasSuffix(arg, ".pub") {
+		pubPath = arg
+		privPath = strings.TrimSuffix(arg, ".pub")
+	} else {
+		privPath = arg
+		pubPath = arg + ".pub"
+	}
+
+	return privPath, pubPath, nil
+}
+
+// runSSHImport handles copying and validating an external SSH key into dev-vps storage.
+//
+// Input args:
+//   - cmd: cobra command instance for output.
+//   - args: optional arguments where args[0] specifies the source private key path.
+//   - force: whether to overwrite existing dev-vps keys.
+//
+// Returns:
+//   - error: non-nil if validation fails, destination exists without force, or copy fails.
+//
+// Example:
+//
+//	err := runSSHImport(cmd, []string{"~/.ssh/id_ed25519"}, false)
+func runSSHImport(cmd *cobra.Command, args []string, force bool) error {
+	arg := ""
+	if len(args) > 0 {
+		arg = args[0]
+	}
+
+	srcPriv, srcPub, err := resolveImportKeyPaths(arg)
+	if err != nil {
+		return err
+	}
+
+	if err := sshutil.ValidateKeyPair(srcPriv, srcPub); err != nil {
+		return fmt.Errorf("failed to validate source SSH key pair: %w", err)
+	}
+
+	dstPriv := config.SSHPrivateKeyPath(customBaseDir)
+	dstPub := config.SSHPublicKeyPath(customBaseDir)
+
+	if !force {
+		if _, err := os.Stat(dstPriv); err == nil {
+			return fmt.Errorf("managed SSH key already exists at %s (use --force to overwrite)", dstPriv)
+		}
+		if _, err := os.Stat(dstPub); err == nil {
+			return fmt.Errorf("managed SSH key already exists at %s (use --force to overwrite)", dstPub)
+		}
+	}
+
+	if err := sshutil.CopyKeyPairFiles(srcPriv, srcPub, dstPriv, dstPub, force); err != nil {
+		return fmt.Errorf("failed to import SSH key pair: %w", err)
+	}
+
+	cmd.Printf("Imported SSH key pair:\n  Private: %s\n  Public:  %s\n", dstPriv, dstPub)
+	cmd.Println("Note: Run 'dev-vps ssh create' to synchronize your imported key with the cloud provider.")
 	return nil
 }
 

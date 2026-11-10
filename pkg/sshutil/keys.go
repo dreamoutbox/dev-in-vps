@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -132,7 +133,7 @@ func copySingleKey(src string, dst string, perm os.FileMode) error {
 	}
 
 	dstDir := filepath.Dir(dst)
-	if err := os.MkdirAll(dstDir, 0755); err != nil {
+	if err := os.MkdirAll(dstDir, 0700); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dstDir, err)
 	}
 
@@ -217,4 +218,41 @@ func CopyKeyPairToDir(srcPrivPath, srcPubPath, dstDir string, force bool) (strin
 	}
 
 	return dstPrivPath, dstPubPath, nil
+}
+
+// ValidateKeyPair verifies that the private and public key files exist and contain valid SSH key material.
+//
+// Input args:
+//   - privPath: path to the private key file.
+//   - pubPath: path to the public key file.
+//
+// Returns:
+//   - error: non-nil if files cannot be read or fail SSH parsing.
+//
+// Example:
+//
+//	err := sshutil.ValidateKeyPair("keys/id_ed25519", "keys/id_ed25519.pub")
+func ValidateKeyPair(privPath, pubPath string) error {
+	privBytes, err := os.ReadFile(privPath)
+	if err != nil {
+		return fmt.Errorf("failed to read private key %s: %w", privPath, err)
+	}
+
+	if _, parseErr := ssh.ParsePrivateKey(privBytes); parseErr != nil {
+		var passErr *ssh.PassphraseMissingError
+		if !errors.As(parseErr, &passErr) {
+			return fmt.Errorf("invalid private key %s: %w", privPath, parseErr)
+		}
+	}
+
+	pubBytes, err := os.ReadFile(pubPath)
+	if err != nil {
+		return fmt.Errorf("failed to read public key %s: %w", pubPath, err)
+	}
+
+	if _, _, _, _, parseErr := ssh.ParseAuthorizedKey(pubBytes); parseErr != nil {
+		return fmt.Errorf("invalid public key %s: %w", pubPath, parseErr)
+	}
+
+	return nil
 }

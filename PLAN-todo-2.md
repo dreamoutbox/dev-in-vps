@@ -21,14 +21,14 @@ Sorted by dependency: bug fix, then key commands (share a key-file helper), then
   - [x] Verify cobra routing: `ssh` uses `DisableFlagParsing`, so check that `ssh copy` and `ssh create` still dispatch to their subcommands.
 - Done when: tests pass and `dev-vps ssh copy /tmp/x` yields `id_ed25519` (0600) and `id_ed25519.pub` (0644) there.
 
-### Phase 3: `ssh import` command (from `~/.ssh` to `~/.dev-vps/.ssh`) [STATUS: TODO]
+### Phase 3: `ssh import` command (from `~/.ssh` to `~/.dev-vps/.ssh`) [STATUS: DONE]
 - Goal: `dev-vps ssh import [key-path]` imports an existing user key as the managed key.
 - Tasks:
-  - [ ] Add `newSSHImportCmd`. The source defaults to `~/.ssh/id_ed25519`. The user can pass another private key path, and the matching `.pub` is expected next to it.
-  - [ ] Reuse the Phase 2 copy helper, targeting `config.SSHPrivateKeyPath` and `config.SSHPublicKeyPath` (respecting `customBaseDir`). The destination names are fixed, so an imported RSA key is saved under the `id_ed25519` names. Decide in Phase 3 whether to support only ed25519 or to generalize the key filenames.
-  - [ ] Refuse to overwrite an existing managed key without `--force`. Validate that the source key parses with `golang.org/x/crypto/ssh`.
-  - [ ] Print a reminder to run `dev-vps ssh create` to register the key with the provider.
-  - [ ] Tests using temp dirs: success, missing source, existing destination, `--force`, invalid key.
+  - [x] Add `newSSHImportCmd`. The source defaults to `~/.ssh/id_ed25519`. The user can pass another private key path, and the matching `.pub` is expected next to it.
+  - [x] Reuse the Phase 2 copy helper, targeting `config.SSHPrivateKeyPath` and `config.SSHPublicKeyPath` (respecting `customBaseDir`). The destination names are fixed, so an imported RSA key is saved under the `id_ed25519` names. Decide in Phase 3 whether to support only ed25519 or to generalize the key filenames.
+  - [x] Refuse to overwrite an existing managed key without `--force`. Validate that the source key parses with `golang.org/x/crypto/ssh`.
+  - [x] Print a reminder to run `dev-vps ssh create` to register the key with the provider.
+  - [x] Tests using temp dirs: success, missing source, existing destination, `--force`, invalid key.
 - Done when: tests pass and an imported key is used by `dev-vps ssh` (`-i` path matches).
 
 ### Phase 4: `list` fetches from the provider API [STATUS: TODO]

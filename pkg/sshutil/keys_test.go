@@ -112,3 +112,40 @@ func TestCopyKeyPair(t *testing.T) {
 		t.Fatalf("expected successful overwrite with force=true, got: %v", err)
 	}
 }
+
+func TestValidateKeyPair(t *testing.T) {
+	tempDir := t.TempDir()
+
+	privPath, pubPath, _, _, err := sshutil.EnsureLocalSSHKey(tempDir)
+	if err != nil {
+		t.Fatalf("EnsureLocalSSHKey failed: %v", err)
+	}
+
+	// 1. Valid key pair
+	if err := sshutil.ValidateKeyPair(privPath, pubPath); err != nil {
+		t.Fatalf("expected valid key pair to pass, got: %v", err)
+	}
+
+	// 2. Missing private key
+	if err := sshutil.ValidateKeyPair(filepath.Join(tempDir, "missing"), pubPath); err == nil {
+		t.Errorf("expected error for missing private key")
+	}
+
+	// 3. Corrupted private key
+	corruptedPriv := filepath.Join(tempDir, "corrupted_id_ed25519")
+	if err := os.WriteFile(corruptedPriv, []byte("invalid-key-data"), 0600); err != nil {
+		t.Fatalf("failed to write corrupted key: %v", err)
+	}
+	if err := sshutil.ValidateKeyPair(corruptedPriv, pubPath); err == nil {
+		t.Errorf("expected error for corrupted private key")
+	}
+
+	// 4. Corrupted public key
+	corruptedPub := filepath.Join(tempDir, "corrupted_pub")
+	if err := os.WriteFile(corruptedPub, []byte("invalid-pub-data"), 0644); err != nil {
+		t.Fatalf("failed to write corrupted pub: %v", err)
+	}
+	if err := sshutil.ValidateKeyPair(privPath, corruptedPub); err == nil {
+		t.Errorf("expected error for corrupted public key")
+	}
+}

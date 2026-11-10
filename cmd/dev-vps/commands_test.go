@@ -203,6 +203,88 @@ func TestSSHCopyCommand(t *testing.T) {
 	}
 }
 
+func TestSSHImportCommand(t *testing.T) {
+	tempDir := filepath.Join(t.TempDir(), "test-home")
+	srcDir := filepath.Join(t.TempDir(), "src-keys")
+
+	// 1. Missing source key
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "import", filepath.Join(srcDir, "nonexistent")})
+	if err := cmd.Execute(); err == nil {
+		t.Fatalf("expected error importing nonexistent key")
+	}
+
+	// 2. Prepare valid key in srcDir
+	srcPriv, _, _, _, err := sshutil.EnsureLocalSSHKey(srcDir)
+	if err != nil {
+		t.Fatalf("EnsureLocalSSHKey failed: %v", err)
+	}
+
+	// 3. Successful import
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "import", srcPriv})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ssh import failed: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Imported SSH key pair") {
+		t.Errorf("expected import confirmation in output, got: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "dev-vps ssh create") {
+		t.Errorf("expected reminder to run dev-vps ssh create, got: %s", buf.String())
+	}
+
+	// Verify imported file permissions
+	destPriv := config.SSHPrivateKeyPath(tempDir)
+	privStat, err := os.Stat(destPriv)
+	if err != nil {
+		t.Fatalf("imported private key not found: %v", err)
+	}
+	if perm := privStat.Mode().Perm(); perm != 0600 {
+		t.Errorf("expected imported private key perm 0600, got %04o", perm)
+	}
+
+	// 4. Overwrite refusal without --force
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "import", srcPriv})
+	if err := cmd.Execute(); err == nil {
+		t.Fatalf("expected error overwriting existing keys without --force")
+	}
+
+	// 5. Overwrite allowed with --force
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "import", "--force", srcPriv})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ssh import with --force failed: %v", err)
+	}
+
+	// 6. Test with corrupted key
+	corruptedDir := t.TempDir()
+	corruptedPriv := filepath.Join(corruptedDir, "id_ed25519")
+	_ = os.WriteFile(corruptedPriv, []byte("bad-key"), 0600)
+	_ = os.WriteFile(corruptedPriv+".pub", []byte("bad-pub"), 0644)
+
+	buf.Reset()
+	cmd = newRootCmd()
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"--home-dir", tempDir, "ssh", "import", "--force", corruptedPriv})
+	if err := cmd.Execute(); err == nil {
+		t.Fatalf("expected error importing corrupted key")
+	}
+}
+
 func TestCreateServerCommand(t *testing.T) {
 	tempDir := filepath.Join(t.TempDir(), "test-home")
 	mock := newMockProvider()

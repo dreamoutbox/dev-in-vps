@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -20,14 +21,17 @@ import (
 )
 
 type mockProvider struct {
-	mu            sync.Mutex
-	regions       []provider.Region
-	sizes         []provider.Size
-	servers       map[string]*provider.ServerInfo
-	firewalls     map[string]*provider.FirewallInfo
-	keysEnsured   map[string]string
-	createdReqs   []provider.CreateServerRequest
-	deletedServer []string
+	mu                sync.Mutex
+	regions           []provider.Region
+	sizes             []provider.Size
+	servers           map[string]*provider.ServerInfo
+	firewalls         map[string]*provider.FirewallInfo
+	keysEnsured       map[string]string
+	createdReqs       []provider.CreateServerRequest
+	deletedServer     []string
+	callLog           []string
+	createFirewallErr error
+	deleteFirewallErr error
 }
 
 func newMockProvider() *mockProvider {
@@ -106,6 +110,7 @@ func (m *mockProvider) GetServer(ctx context.Context, id string) (*provider.Serv
 func (m *mockProvider) DeleteServer(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.callLog = append(m.callLog, "DeleteServer:"+id)
 	delete(m.servers, id)
 	m.deletedServer = append(m.deletedServer, id)
 	return nil
@@ -114,6 +119,10 @@ func (m *mockProvider) DeleteServer(ctx context.Context, id string) error {
 func (m *mockProvider) CreateFirewall(ctx context.Context, serverID string, name string, rules []firewall.Rule) (*provider.FirewallInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.callLog = append(m.callLog, "CreateFirewall:"+serverID)
+	if m.createFirewallErr != nil {
+		return nil, m.createFirewallErr
+	}
 	info := &provider.FirewallInfo{
 		ID:           "fw-" + serverID,
 		Name:         name,
@@ -148,6 +157,10 @@ func (m *mockProvider) UpdateFirewallRules(ctx context.Context, serverID string,
 func (m *mockProvider) DeleteFirewall(ctx context.Context, serverID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.callLog = append(m.callLog, "DeleteFirewall:"+serverID)
+	if m.deleteFirewallErr != nil {
+		return m.deleteFirewallErr
+	}
 	delete(m.firewalls, serverID)
 	return nil
 }
@@ -736,4 +749,325 @@ func TestDestroyCommand(t *testing.T) {
 	if _, found := stReloaded.GetServer("doomed-server"); found {
 		t.Errorf("expected doomed-server to be removed from local state")
 	}
+}
+
+func TestCreateServerFirewallLifecycle(t *testing.T) {
+	t.Cleanup(func() {
+		customBaseDir = ""
+		createName = ""
+		createRegion = ""
+		createSize = ""
+		createInitScript = ""
+	})
+
+	t.Run("create uses configured firewall rules and sources", func(t *testing.T) {
+		tempDir := filepath.Join(t.TempDir(), "custom-fw-home")
+		if err := config.InitStorage(tempDir); err != nil {
+			t.Fatalf("InitStorage failed: %v", err)
+		}
+		cfg := config.DefaultConfig()
+		cfg.Firewall = &config.FirewallConfig{
+			DefaultRules:   []string{"80", "9000-9010/udp", "icmp"},
+			DefaultSources: []string{"203.0.113.7"},
+		}
+		if err := config.SaveConfig(tempDir, cfg); err != nil {
+			t.Fatalf("SaveConfig failed: %v", err)
+		}
+
+		mock := newMockProvider()
+		oldFactory := providerFactory
+		providerFactory = func(cfg *config.Config) (provider.Provider, error) { return mock, nil }
+		defer func() { providerFactory = oldFactory }()
+
+		cmd := newRootCmd()
+		outBuf := new(bytes.Buffer)
+		errBuf := new(bytes.Buffer)
+		cmd.SetOut(outBuf)
+		cmd.SetErr(errBuf)
+		cmd.SetArgs([]string{
+			"--home-dir", tempDir,
+			"create",
+			"--name", "custom-box",
+			"--region", "nyc1",
+			"--size", "s-2vcpu-4gb",
+		})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("create failed: %v", err)
+		}
+
+		fw, ok := mock.firewalls["server-999"]
+		if !ok {
+			t.Fatalf("expected firewall to be created for server-999")
+		}
+		if fw.Name != "dev-vps-custom-box" {
+			t.Errorf("expected firewall name dev-vps-custom-box, got %q", fw.Name)
+		}
+		wantSpecs := []string{"22/tcp", "80/tcp", "9000-9010/udp", "icmp"}
+		if len(fw.InboundRules) != len(wantSpecs) {
+			t.Fatalf("expected %d rules, got %+v", len(wantSpecs), fw.InboundRules)
+		}
+		for i, want := range wantSpecs {
+			if fw.InboundRules[i].Spec() != want {
+				t.Errorf("rule[%d] = %q, want %q", i, fw.InboundRules[i].Spec(), want)
+			}
+			if !reflect.DeepEqual(fw.InboundRules[i].Sources, []string{"203.0.113.7/32"}) {
+				t.Errorf("rule[%d].Sources = %v, want [203.0.113.7/32]", i, fw.InboundRules[i].Sources)
+			}
+		}
+		if !strings.Contains(outBuf.String(), "dev-vps-custom-box") || !strings.Contains(outBuf.String(), "9000-9010/udp") {
+			t.Errorf("expected firewall rules in create summary, got:\n%s", outBuf.String())
+		}
+	})
+
+	t.Run("create with no firewall block uses built-in defaults without 5432", func(t *testing.T) {
+		tempDir := filepath.Join(t.TempDir(), "legacy-fw-home")
+		if err := config.InitStorage(tempDir); err != nil {
+			t.Fatalf("InitStorage failed: %v", err)
+		}
+		legacyJSON := `{"default_provider":"digitalocean","default_region":"nyc1","default_size":"s-2vcpu-4gb"}`
+		if err := os.WriteFile(config.ConfigPath(tempDir), []byte(legacyJSON), 0600); err != nil {
+			t.Fatalf("failed to write legacy config: %v", err)
+		}
+
+		mock := newMockProvider()
+		oldFactory := providerFactory
+		providerFactory = func(cfg *config.Config) (provider.Provider, error) { return mock, nil }
+		defer func() { providerFactory = oldFactory }()
+
+		cmd := newRootCmd()
+		cmd.SetOut(new(bytes.Buffer))
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{
+			"--home-dir", tempDir,
+			"create",
+			"--name", "legacy-box",
+			"--region", "nyc1",
+			"--size", "s-2vcpu-4gb",
+		})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("create failed: %v", err)
+		}
+
+		fw, ok := mock.firewalls["server-999"]
+		if !ok {
+			t.Fatalf("expected firewall to be created for server-999")
+		}
+		wantSpecs := []string{"22/tcp", "80/tcp", "443/tcp", "8080/tcp", "8081/tcp", "3000/tcp", "8000/tcp"}
+		if len(fw.InboundRules) != len(wantSpecs) {
+			t.Fatalf("expected %d built-in rules, got %+v", len(wantSpecs), fw.InboundRules)
+		}
+		for i, want := range wantSpecs {
+			if fw.InboundRules[i].Spec() != want {
+				t.Errorf("rule[%d] = %q, want %q", i, fw.InboundRules[i].Spec(), want)
+			}
+			if fw.InboundRules[i].Spec() == "5432/tcp" {
+				t.Errorf("5432/tcp must not be in built-in defaults")
+			}
+		}
+	})
+
+	t.Run("invalid firewall config fails fast with no CreateServer call", func(t *testing.T) {
+		tempDir := filepath.Join(t.TempDir(), "invalid-fw-home")
+		if err := config.InitStorage(tempDir); err != nil {
+			t.Fatalf("InitStorage failed: %v", err)
+		}
+		cfg := config.DefaultConfig()
+		cfg.Firewall = &config.FirewallConfig{
+			DefaultRules:   []string{"22", "9000/sctp"},
+			DefaultSources: []string{"any"},
+		}
+		if err := config.SaveConfig(tempDir, cfg); err != nil {
+			t.Fatalf("SaveConfig failed: %v", err)
+		}
+
+		mock := newMockProvider()
+		oldFactory := providerFactory
+		providerFactory = func(cfg *config.Config) (provider.Provider, error) { return mock, nil }
+		defer func() { providerFactory = oldFactory }()
+
+		cmd := newRootCmd()
+		cmd.SetOut(new(bytes.Buffer))
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{
+			"--home-dir", tempDir,
+			"create",
+			"--name", "bad-config-box",
+			"--region", "nyc1",
+			"--size", "s-2vcpu-4gb",
+		})
+
+		err := cmd.Execute()
+		if err == nil {
+			t.Fatalf("expected create to fail on invalid firewall config")
+		}
+		if !strings.Contains(err.Error(), "firewall.default_rules") {
+			t.Errorf("expected error to name firewall.default_rules, got: %v", err)
+		}
+		if len(mock.createdReqs) != 0 {
+			t.Errorf("expected zero CreateServer calls on invalid config, got %d", len(mock.createdReqs))
+		}
+		if len(mock.firewalls) != 0 {
+			t.Errorf("expected zero firewalls created on invalid config, got %d", len(mock.firewalls))
+		}
+	})
+
+	t.Run("firewall API error warns and still completes server creation", func(t *testing.T) {
+		tempDir := filepath.Join(t.TempDir(), "fw-api-err-home")
+		mock := newMockProvider()
+		mock.createFirewallErr = errors.New("token lacks firewall write scope")
+
+		oldFactory := providerFactory
+		providerFactory = func(cfg *config.Config) (provider.Provider, error) { return mock, nil }
+		defer func() { providerFactory = oldFactory }()
+
+		cmd := newRootCmd()
+		outBuf := new(bytes.Buffer)
+		errBuf := new(bytes.Buffer)
+		cmd.SetOut(outBuf)
+		cmd.SetErr(errBuf)
+		cmd.SetArgs([]string{
+			"--home-dir", tempDir,
+			"create",
+			"--name", "warn-box",
+			"--region", "nyc1",
+			"--size", "s-2vcpu-4gb",
+		})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("expected create to succeed despite firewall error, got: %v", err)
+		}
+		if !strings.Contains(errBuf.String(), "Warning: failed to create firewall") {
+			t.Errorf("expected firewall warning on stderr, got: %s", errBuf.String())
+		}
+		if len(mock.createdReqs) != 1 {
+			t.Errorf("expected server to remain created, got %d requests", len(mock.createdReqs))
+		}
+		st, err := config.LoadState(tempDir)
+		if err != nil {
+			t.Fatalf("LoadState failed: %v", err)
+		}
+		if _, found := st.GetServer("warn-box"); !found {
+			t.Errorf("expected warn-box to be persisted in local state")
+		}
+	})
+}
+
+func TestDestroyServerFirewallLifecycle(t *testing.T) {
+	t.Cleanup(func() {
+		customBaseDir = ""
+		destroyForce = false
+	})
+
+	seedServer := func(t *testing.T, tempDir, id, name string, mock *mockProvider, withFirewall bool) {
+		t.Helper()
+		if err := config.InitStorage(tempDir); err != nil {
+			t.Fatalf("InitStorage failed: %v", err)
+		}
+		st, _ := config.LoadState(tempDir)
+		st.AddServer(config.ServerRecord{
+			ID:        id,
+			Name:      name,
+			Provider:  types.ProviderDigitalOcean,
+			Region:    "nyc1",
+			Size:      "s-2vcpu-4gb",
+			IPAddress: "203.0.113.99",
+			Status:    types.StatusActive,
+			CreatedAt: time.Now(),
+		})
+		_ = config.SaveState(tempDir, st)
+		mock.servers[id] = &provider.ServerInfo{ID: id, Name: name}
+		if withFirewall {
+			mock.firewalls[id] = &provider.FirewallInfo{
+				ID:           "fw-" + id,
+				Name:         provider.FirewallNamePrefix + name,
+				ServerID:     id,
+				InboundRules: []firewall.Rule{firewall.SSHRule(firewall.DefaultSources())},
+			}
+		}
+	}
+
+	t.Run("destroy deletes firewall before deleting droplet", func(t *testing.T) {
+		tempDir := filepath.Join(t.TempDir(), "destroy-fw-home")
+		mock := newMockProvider()
+		seedServer(t, tempDir, "srv-fw-1", "fw-box", mock, true)
+
+		oldFactory := providerFactory
+		providerFactory = func(cfg *config.Config) (provider.Provider, error) { return mock, nil }
+		defer func() { providerFactory = oldFactory }()
+
+		cmd := newRootCmd()
+		cmd.SetOut(new(bytes.Buffer))
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{"--home-dir", tempDir, "destroy", "fw-box", "-y"})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("destroy failed: %v", err)
+		}
+		if _, exists := mock.firewalls["srv-fw-1"]; exists {
+			t.Errorf("expected firewall to be deleted")
+		}
+		wantOrder := []string{"DeleteFirewall:srv-fw-1", "DeleteServer:srv-fw-1"}
+		if !reflect.DeepEqual(mock.callLog, wantOrder) {
+			t.Errorf("call order = %v, want %v", mock.callLog, wantOrder)
+		}
+	})
+
+	t.Run("destroying droplet without firewall succeeds cleanly", func(t *testing.T) {
+		tempDir := filepath.Join(t.TempDir(), "destroy-nofw-home")
+		mock := newMockProvider()
+		seedServer(t, tempDir, "srv-nofw-1", "nofw-box", mock, false)
+
+		oldFactory := providerFactory
+		providerFactory = func(cfg *config.Config) (provider.Provider, error) { return mock, nil }
+		defer func() { providerFactory = oldFactory }()
+
+		cmd := newRootCmd()
+		errBuf := new(bytes.Buffer)
+		cmd.SetOut(new(bytes.Buffer))
+		cmd.SetErr(errBuf)
+		cmd.SetArgs([]string{"--home-dir", tempDir, "destroy", "nofw-box", "-y"})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("destroy failed: %v", err)
+		}
+		if errBuf.Len() != 0 {
+			t.Errorf("expected no warnings on stderr, got: %s", errBuf.String())
+		}
+		if len(mock.deletedServer) != 1 || mock.deletedServer[0] != "srv-nofw-1" {
+			t.Errorf("expected srv-nofw-1 deleted, got %v", mock.deletedServer)
+		}
+	})
+
+	t.Run("firewall delete error warns and still deletes droplet", func(t *testing.T) {
+		tempDir := filepath.Join(t.TempDir(), "destroy-fwerr-home")
+		mock := newMockProvider()
+		mock.deleteFirewallErr = errors.New("firewall API error")
+		seedServer(t, tempDir, "srv-fwerr-1", "fwerr-box", mock, true)
+
+		oldFactory := providerFactory
+		providerFactory = func(cfg *config.Config) (provider.Provider, error) { return mock, nil }
+		defer func() { providerFactory = oldFactory }()
+
+		cmd := newRootCmd()
+		errBuf := new(bytes.Buffer)
+		cmd.SetOut(new(bytes.Buffer))
+		cmd.SetErr(errBuf)
+		cmd.SetArgs([]string{"--home-dir", tempDir, "destroy", "fwerr-box", "-y"})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("expected destroy to continue despite firewall error, got: %v", err)
+		}
+		if !strings.Contains(errBuf.String(), "Warning: failed to delete firewall") {
+			t.Errorf("expected firewall deletion warning on stderr, got: %s", errBuf.String())
+		}
+		if len(mock.deletedServer) != 1 || mock.deletedServer[0] != "srv-fwerr-1" {
+			t.Errorf("expected droplet srv-fwerr-1 to be deleted, got %v", mock.deletedServer)
+		}
+		st, _ := config.LoadState(tempDir)
+		if _, found := st.GetServer("fwerr-box"); found {
+			t.Errorf("expected fwerr-box to be removed from local state")
+		}
+	})
 }

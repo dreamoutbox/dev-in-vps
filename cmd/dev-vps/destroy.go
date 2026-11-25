@@ -99,6 +99,12 @@ func runDestroyServer(cmd *cobra.Command, args []string) error {
 
 	cmd.Printf("Destroying server %s (ID: %s) on %s...\n", targetName, targetID, prov.Type())
 
+	// Delete the managed firewall before deleting the droplet because ListByDroplet
+	// cannot find the firewall once the droplet is gone.
+	if fwErr := prov.DeleteFirewall(ctx, targetID); fwErr != nil {
+		cmd.PrintErrf("Warning: failed to delete firewall for server %s: %v\n", targetName, fwErr)
+	}
+
 	if err := prov.DeleteServer(ctx, targetID); err != nil {
 		return fmt.Errorf("failed to destroy server %s: %w", targetID, err)
 	}

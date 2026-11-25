@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
+	"github.com/dreamoutbox/dev-in-vps/pkg/firewall"
 	"github.com/dreamoutbox/dev-in-vps/pkg/provider"
 	"github.com/dreamoutbox/dev-in-vps/pkg/sshutil"
 	"github.com/dreamoutbox/dev-in-vps/pkg/types"
@@ -49,6 +50,12 @@ func runCreateServer(cmd *cobra.Command, args []string) error {
 	cfg, err := config.LoadConfig(customBaseDir)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Validate firewall defaults before any provider API call so bad config creates no droplet.
+	defaultFirewallRules, _, err := resolveFirewallDefaults(cfg)
+	if err != nil {
+		return err
 	}
 
 	prov, err := providerFactory(cfg)
@@ -143,7 +150,15 @@ func runCreateServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("polling server failed: %w", err)
 	}
 
-	// 7. Persist to local state
+	// 7. Attach default cloud firewall (warn and keep droplet if firewall creation fails)
+	firewallName := provider.FirewallNamePrefix + activeInfo.Name
+	createdFirewall, fwErr := prov.CreateFirewall(ctx, activeInfo.ID, firewallName, defaultFirewallRules)
+	if fwErr != nil {
+		cmd.PrintErrf("Warning: failed to create firewall %s: %v\n", firewallName, fwErr)
+		cmd.PrintErrf("The server is still running; you can create the firewall later with `dev-vps firewall allow %s <rule>`.\n", activeInfo.Name)
+	}
+
+	// 8. Persist to local state
 	st, err := config.LoadState(customBaseDir)
 	if err != nil {
 		return fmt.Errorf("failed to load state: %w", err)
@@ -174,11 +189,23 @@ func runCreateServer(cmd *cobra.Command, args []string) error {
 	if activeInfo.PrivateIPAddress != "" {
 		cmd.Printf("  Internal IP: %s\n", activeInfo.PrivateIPAddress)
 	}
+	if createdFirewall != nil {
+		cmd.Printf("  Firewall:    %s (%s)\n", createdFirewall.Name, formatRuleSpecsSummary(createdFirewall.InboundRules))
+	}
 	cmd.Printf("  Status:      %s\n\n", activeInfo.Status)
 	cmd.Printf("Create command for reuse:\n  %s\n\n", reuseCmd.String())
 	cmd.Printf("Connect to server:\n  dev-vps ssh %s\n", activeInfo.Name)
 
 	return nil
+}
+
+// formatRuleSpecsSummary joins rule specs into a compact comma-separated summary string.
+func formatRuleSpecsSummary(rules []firewall.Rule) string {
+	specs := make([]string, len(rules))
+	for i, r := range rules {
+		specs[i] = r.Spec()
+	}
+	return strings.Join(specs, ", ")
 }
 
 // pollServerActive polls the provider until the instance reaches StatusActive with an IPv4 address.

@@ -118,13 +118,13 @@ The following are rejected before any API call, and every invalid arg is reporte
   - [x] Add the new methods to `mockProvider` in `cmd/dev-vps/commands_test.go`, backed by an in-memory map keyed by server ID.
 - Done when: `go test ./...` is green and the provider tests cover create, get (found and not found), update and delete.
 
-### Phase 4: Create the firewall on `create`, delete it on `destroy` [STATUS: TODO]
+### Phase 4: Create the firewall on `create`, delete it on `destroy` [STATUS: DONE]
 - Goal: every new droplet gets the configured default firewall, and destroying the droplet removes it.
 - Tasks:
-  - [ ] In `runCreateServer`, resolve the firewall defaults (Phase 2) right after `LoadConfig`, before any provider call, so a bad config fails without creating a droplet.
-  - [ ] After `pollServerActive`, call `CreateFirewall`. If it fails, warn and keep the droplet: the droplet still works, and `firewall allow` (Phase 6) can create the missing firewall. Print the open rules in the success summary.
-  - [ ] In `runDestroyServer`, call `DeleteFirewall` before `DeleteServer`, because `ListByDroplet` cannot find the firewall once the droplet is gone. If it fails, warn and continue with the droplet deletion.
-  - [ ] Tests in `commands_test.go`:
+  - [x] In `runCreateServer`, resolve the firewall defaults (Phase 2) right after `LoadConfig`, before any provider call, so a bad config fails without creating a droplet.
+  - [x] After `pollServerActive`, call `CreateFirewall`. If it fails, warn and keep the droplet: the droplet still works, and `firewall allow` (Phase 6) can create the missing firewall. Print the open rules in the success summary.
+  - [x] In `runDestroyServer`, call `DeleteFirewall` before `DeleteServer`, because `ListByDroplet` cannot find the firewall once the droplet is gone. If it fails, warn and continue with the droplet deletion.
+  - [x] Tests in `commands_test.go`:
     - create uses the config rules and sources;
     - create with no firewall block uses the built-in defaults (5432 absent);
     - an invalid firewall config makes create fail with no `CreateServer` call;

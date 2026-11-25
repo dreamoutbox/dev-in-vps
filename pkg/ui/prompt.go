@@ -6,11 +6,19 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/huh"
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
 	"github.com/dreamoutbox/dev-in-vps/pkg/provider"
 	"golang.org/x/term"
+)
+
+const (
+	// customSizeSentinel identifies the manual size entry option in SelectSize.
+	customSizeSentinel = "__custom_size__"
+	// customSizeLabel is the menu label for entering a custom droplet size slug.
+	customSizeLabel = "Custom (enter size slug manually)"
 )
 
 // IsInteractive returns true if standard input is attached to an interactive terminal.
@@ -90,14 +98,15 @@ func formatMemory(mb int) string {
 	return fmt.Sprintf("%d MB", mb)
 }
 
-// SelectSize presents a selection list of available compute sizes with specs and pricing.
+// SelectSize presents a selection list of available compute sizes with specs and pricing,
+// plus an option to enter a custom size slug manually.
 //
 // Input args:
 //   - sizes: list of available sizes.
 //   - defaultSlug: pre-selected or fallback size slug.
 //
 // Returns:
-//   - string: chosen size slug.
+//   - string: chosen or custom-entered size slug.
 //   - error: non-nil if prompt is cancelled or input reading fails.
 //
 // Example:
@@ -108,6 +117,43 @@ func SelectSize(sizes []provider.Size, defaultSlug string) (string, error) {
 		return defaultSlug, fmt.Errorf("no sizes available")
 	}
 
+	options, selected := buildSizeOptions(sizes, defaultSlug)
+
+	if !IsInteractive() {
+		return selected, nil
+	}
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Select Server Size").
+				Options(options...).
+				Value(&selected),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return "", fmt.Errorf("size selection cancelled: %w", err)
+	}
+
+	return resolveSizeSelection(selected, promptCustomSizeSlug)
+}
+
+// buildSizeOptions formats compute size choices with a leading custom-input entry and
+// resolves the initial default selection to a real size slug.
+//
+// Input args:
+//   - sizes: non-empty list of available sizes.
+//   - defaultSlug: preferred initial size slug.
+//
+// Returns:
+//   - []huh.Option[string]: menu options with the custom entry first.
+//   - string: initially highlighted size slug (defaultSlug if found, otherwise sizes[0].Slug).
+//
+// Example:
+//
+//	options, selected := buildSizeOptions(sizes, "s-2vcpu-4gb")
+func buildSizeOptions(sizes []provider.Size, defaultSlug string) ([]huh.Option[string], string) {
 	type formattedSpec struct {
 		slug  string
 		vcpu  string
@@ -145,7 +191,9 @@ func SelectSize(sizes []provider.Size, defaultSlug string) (string, error) {
 		specs[i] = spec
 	}
 
-	options := make([]huh.Option[string], 0, len(sizes))
+	options := make([]huh.Option[string], 0, len(sizes)+1)
+	options = append(options, huh.NewOption(customSizeLabel, customSizeSentinel))
+
 	selected := defaultSlug
 	foundDefault := false
 
@@ -168,16 +216,71 @@ func SelectSize(sizes []provider.Size, defaultSlug string) (string, error) {
 		selected = sizes[0].Slug
 	}
 
-	if !IsInteractive() {
+	return options, selected
+}
+
+// resolveSizeSelection returns selected directly for preset sizes, or invokes promptCustom
+// when the user chose manual custom size entry.
+//
+// Input args:
+//   - selected: value chosen from the Select Server Size menu.
+//   - promptCustom: callback that prompts for a custom size slug.
+//
+// Returns:
+//   - string: validated, trimmed server size slug.
+//   - error: non-nil if custom prompting is cancelled or produces an invalid slug.
+//
+// Example:
+//
+//	slug, err := resolveSizeSelection(selected, promptCustomSizeSlug)
+func resolveSizeSelection(selected string, promptCustom func() (string, error)) (string, error) {
+	if selected != customSizeSentinel {
 		return selected, nil
 	}
 
+	customSlug, err := promptCustom()
+	if err != nil {
+		return "", err
+	}
+	if err := validateCustomSizeSlug(customSlug); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(customSlug), nil
+}
+
+// validateCustomSizeSlug ensures a manually entered droplet size slug is non-empty
+// and contains no whitespace characters.
+//
+// Input args:
+//   - raw: raw user input string.
+//
+// Returns:
+//   - error: non-nil if the slug is blank or contains whitespace.
+//
+// Example:
+//
+//	if err := validateCustomSizeSlug("s-2vcpu-4gb"); err != nil { ... }
+func validateCustomSizeSlug(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return fmt.Errorf("server size slug cannot be empty")
+	}
+	if strings.IndexFunc(trimmed, unicode.IsSpace) != -1 {
+		return fmt.Errorf("server size slug cannot contain whitespace")
+	}
+	return nil
+}
+
+// promptCustomSizeSlug displays an interactive text input prompt for entering a droplet size slug.
+func promptCustomSizeSlug() (string, error) {
+	var slug string
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Select Server Size").
-				Options(options...).
-				Value(&selected),
+			huh.NewInput().
+				Title("Enter Server Size Slug").
+				Placeholder("e.g. s-2vcpu-4gb").
+				Validate(validateCustomSizeSlug).
+				Value(&slug),
 		),
 	)
 
@@ -185,7 +288,7 @@ func SelectSize(sizes []provider.Size, defaultSlug string) (string, error) {
 		return "", fmt.Errorf("size selection cancelled: %w", err)
 	}
 
-	return selected, nil
+	return strings.TrimSpace(slug), nil
 }
 
 // PromptText prompts the user for a text input with an optional default value.

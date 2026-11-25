@@ -22,3 +22,5 @@
 - [x] add command to deny ports for a droplet. `dev-vps firewall deny <droplet_name> <port_list>`. example `dev-vps firewall deny my-droplet 9000 9001 9002`
 
 - [x] add command to list firewall rules for a droplet. `dev-vps firewall list <droplet_name>`
+
+- [x] add input for custom droplet size at "Select Server Size" list.

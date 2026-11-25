@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -26,7 +27,10 @@ const (
 
 // Client provides an adapter to interact with the DigitalOcean API.
 type Client struct {
-	client *godo.Client
+	client      *godo.Client
+	httpClient  *http.Client
+	baseURL     *url.URL
+	debugWriter io.Writer
 }
 
 // Option configures a Client instance.
@@ -35,18 +39,34 @@ type Option func(*Client)
 // WithHTTPClient overrides the default HTTP client (useful for unit testing with httptest).
 func WithHTTPClient(httpClient *http.Client) Option {
 	return func(c *Client) {
-		c.client = godo.NewClient(httpClient)
+		c.httpClient = httpClient
 	}
 }
 
 // WithBaseURL overrides the API base URL (useful for mock servers in tests).
 func WithBaseURL(rawURL string) Option {
 	return func(c *Client) {
-		if c.client != nil {
-			if parsed, err := url.Parse(rawURL); err == nil {
-				c.client.BaseURL = parsed
-			}
+		if parsed, err := url.Parse(rawURL); err == nil {
+			c.baseURL = parsed
 		}
+	}
+}
+
+// WithDebugWriter configures an io.Writer that receives HTTP request/response status
+// and formatted JSON bodies for every DigitalOcean API call.
+//
+// Input args:
+//   - w: destination writer for HTTP debug output (nil disables debug output).
+//
+// Returns:
+//   - Option: functional option for New.
+//
+// Example:
+//
+//	doClient := digitalocean.New(token, digitalocean.WithDebugWriter(os.Stderr))
+func WithDebugWriter(w io.Writer) Option {
+	return func(c *Client) {
+		c.debugWriter = w
 	}
 }
 
@@ -63,13 +83,31 @@ func WithBaseURL(rawURL string) Option {
 //
 //	doClient := digitalocean.New("do-token-here")
 func New(token string, opts ...Option) *Client {
-	tokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-	oauthClient := oauth2.NewClient(context.Background(), tokenSource)
-	c := &Client{
-		client: godo.NewClient(oauthClient),
-	}
+	c := &Client{}
 	for _, opt := range opts {
 		opt(c)
+	}
+
+	baseHTTPClient := c.httpClient
+	if baseHTTPClient == nil {
+		tokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+		baseHTTPClient = oauth2.NewClient(context.Background(), tokenSource)
+	}
+
+	// Copy caller's http.Client so wrapping Transport never mutates shared test clients.
+	wrappedClient := *baseHTTPClient
+	baseTransport := wrappedClient.Transport
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport
+	}
+	wrappedClient.Transport = &httpInspector{
+		base:        baseTransport,
+		debugWriter: c.debugWriter,
+	}
+
+	c.client = godo.NewClient(&wrappedClient)
+	if c.baseURL != nil {
+		c.client.BaseURL = c.baseURL
 	}
 	return c
 }
@@ -93,9 +131,9 @@ func (c *Client) Type() types.ProviderType {
 //	regions, err := client.ListRegions(ctx)
 func (c *Client) ListRegions(ctx context.Context) ([]provider.Region, error) {
 	opts := &godo.ListOptions{PerPage: 100}
-	regions, _, err := c.client.Regions.List(ctx, opts)
+	regions, resp, err := c.client.Regions.List(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list DigitalOcean regions: %w", err)
+		return nil, wrapAPIError("failed to list DigitalOcean regions", resp, err)
 	}
 
 	result := make([]provider.Region, 0, len(regions))
@@ -124,16 +162,18 @@ func (c *Client) ListRegions(ctx context.Context) ([]provider.Region, error) {
 //	sizes, err := client.ListSizes(ctx, "nyc1")
 func (c *Client) ListSizes(ctx context.Context, regionSlug string) ([]provider.Size, error) {
 	opts := &godo.ListOptions{PerPage: 200}
-	sizes, _, err := c.client.Sizes.List(ctx, opts)
+	sizes, resp, err := c.client.Sizes.List(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list DigitalOcean sizes: %w", err)
+		return nil, wrapAPIError("failed to list DigitalOcean sizes", resp, err)
 	}
 
+	availableCount := 0
 	result := make([]provider.Size, 0, len(sizes))
 	for _, s := range sizes {
 		if !s.Available {
 			continue
 		}
+		availableCount++
 		if regionSlug != "" {
 			regionSupported := false
 			for _, r := range s.Regions {
@@ -156,6 +196,9 @@ func (c *Client) ListSizes(ctx context.Context, regionSlug string) ([]provider.S
 			PriceHourly:  s.PriceHourly,
 			Regions:      s.Regions,
 		})
+	}
+	if len(result) == 0 {
+		return nil, formatEmptySizesError(regionSlug, resp, sizes, availableCount)
 	}
 	return result, nil
 }
@@ -205,7 +248,7 @@ func (c *Client) EnsureSSHKey(ctx context.Context, name string, publicKey string
 		return strconv.Itoa(existingKey.ID), nil
 	}
 	if resp != nil && resp.StatusCode != http.StatusNotFound && err != nil {
-		return "", fmt.Errorf("failed to lookup ssh key by fingerprint: %w", err)
+		return "", wrapAPIError("failed to lookup ssh key by fingerprint", resp, err)
 	}
 
 	// Key not found on DO, create it
@@ -213,9 +256,9 @@ func (c *Client) EnsureSSHKey(ctx context.Context, name string, publicKey string
 		Name:      name,
 		PublicKey: trimmedKey,
 	}
-	newKey, _, err := c.client.Keys.Create(ctx, keyReq)
+	newKey, resp, err := c.client.Keys.Create(ctx, keyReq)
 	if err != nil {
-		return "", fmt.Errorf("failed to upload ssh key to DigitalOcean: %w", err)
+		return "", wrapAPIError("failed to upload ssh key to DigitalOcean", resp, err)
 	}
 
 	return strconv.Itoa(newKey.ID), nil
@@ -301,9 +344,9 @@ func (c *Client) CreateServer(ctx context.Context, req provider.CreateServerRequ
 		Tags:     tags,
 	}
 
-	droplet, _, err := c.client.Droplets.Create(ctx, createReq)
+	droplet, resp, err := c.client.Droplets.Create(ctx, createReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create DigitalOcean droplet: %w", err)
+		return nil, wrapAPIError("failed to create DigitalOcean droplet", resp, err)
 	}
 
 	return dropletToServerInfo(droplet), nil
@@ -323,9 +366,9 @@ func (c *Client) CreateServer(ctx context.Context, req provider.CreateServerRequ
 //	servers, err := client.ListServers(ctx)
 func (c *Client) ListServers(ctx context.Context) ([]provider.ServerInfo, error) {
 	opts := &godo.ListOptions{PerPage: 100}
-	droplets, _, err := c.client.Droplets.ListByTag(ctx, provider.DevVPSTag, opts)
+	droplets, resp, err := c.client.Droplets.ListByTag(ctx, provider.DevVPSTag, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list droplets by tag %s: %w", provider.DevVPSTag, err)
+		return nil, wrapAPIError(fmt.Sprintf("failed to list droplets by tag %s", provider.DevVPSTag), resp, err)
 	}
 
 	result := make([]provider.ServerInfo, 0, len(droplets))
@@ -358,9 +401,9 @@ func (c *Client) GetServer(ctx context.Context, id string) (*provider.ServerInfo
 		return nil, fmt.Errorf("invalid droplet id %s: %w", id, err)
 	}
 
-	droplet, _, err := c.client.Droplets.Get(ctx, dropletID)
+	droplet, resp, err := c.client.Droplets.Get(ctx, dropletID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch droplet %d: %w", dropletID, err)
+		return nil, wrapAPIError(fmt.Sprintf("failed to fetch droplet %d", dropletID), resp, err)
 	}
 
 	return dropletToServerInfo(droplet), nil
@@ -384,9 +427,9 @@ func (c *Client) DeleteServer(ctx context.Context, id string) error {
 		return fmt.Errorf("invalid droplet id %s: %w", id, err)
 	}
 
-	_, err = c.client.Droplets.Delete(ctx, dropletID)
+	resp, err := c.client.Droplets.Delete(ctx, dropletID)
 	if err != nil {
-		return fmt.Errorf("failed to delete droplet %d: %w", dropletID, err)
+		return wrapAPIError(fmt.Sprintf("failed to delete droplet %d", dropletID), resp, err)
 	}
 
 	return nil

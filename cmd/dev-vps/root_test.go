@@ -40,3 +40,32 @@ func TestRootCmdExecution(t *testing.T) {
 		t.Fatalf("expected config to be initialized in tempDir, got: %v", err)
 	}
 }
+
+func TestRootCmdDebugFlag(t *testing.T) {
+	t.Cleanup(func() {
+		customBaseDir = ""
+		debugHTTP = false
+	})
+
+	tempDir := filepath.Join(t.TempDir(), "cli-debug-home")
+	cmd := newRootCmd()
+	var seenDebug bool
+	cmd.AddCommand(&cobra.Command{
+		Use: "check-debug",
+		Run: func(c *cobra.Command, args []string) {
+			seenDebug = debugHTTP
+		},
+	})
+
+	cmd.SetArgs([]string{"--home-dir", tempDir, "--debug", "check-debug"})
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("root command with --debug failed: %v", err)
+	}
+	if !seenDebug {
+		t.Fatalf("expected --debug flag to set debugHTTP=true")
+	}
+}

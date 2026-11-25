@@ -33,7 +33,11 @@ func newProviderFromConfig(cfg *config.Config) (provider.Provider, error) {
 		if err != nil {
 			return nil, err
 		}
-		return digitalocean.New(token), nil
+		var opts []digitalocean.Option
+		if debugHTTP {
+			opts = append(opts, digitalocean.WithDebugWriter(debugOutput))
+		}
+		return digitalocean.New(token, opts...), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", cfg.DefaultProvider)
 	}

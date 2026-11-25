@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 
@@ -14,6 +15,10 @@ import (
 var (
 	// customBaseDir allows overriding the ~/.dev-vps directory path via command flag.
 	customBaseDir string
+	// debugHTTP enables logging HTTP request/response status and JSON bodies to stderr.
+	debugHTTP bool
+	// debugOutput is the writer used for HTTP debug output (defaults to os.Stderr).
+	debugOutput io.Writer = os.Stderr
 )
 
 // newRootCmd builds the root cobra command for the dev-vps CLI.
@@ -33,6 +38,7 @@ func newRootCmd() *cobra.Command {
 		Long:             `dev-vps is a command-line tool to spin up development cloud servers for remote development workloads.`,
 		TraverseChildren: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			debugOutput = cmd.ErrOrStderr()
 			if customBaseDir != "" {
 				_ = os.Setenv(config.EnvDevVPSHome, customBaseDir)
 			}
@@ -46,6 +52,12 @@ func newRootCmd() *cobra.Command {
 		"home-dir",
 		"",
 		"custom configuration and state directory (default: ~/.dev-vps)",
+	)
+	rootCmd.PersistentFlags().BoolVar(
+		&debugHTTP,
+		"debug",
+		false,
+		"print provider HTTP request status and JSON responses to stderr",
 	)
 
 	rootCmd.AddCommand(newCreateCmd())

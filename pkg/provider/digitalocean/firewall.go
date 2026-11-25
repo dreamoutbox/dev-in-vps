@@ -50,9 +50,9 @@ func (c *Client) CreateFirewall(ctx context.Context, serverID string, name strin
 		DropletIDs:    []int{dropletID},
 	}
 
-	fw, _, err := c.client.Firewalls.Create(ctx, req)
+	fw, resp, err := c.client.Firewalls.Create(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create DigitalOcean firewall %q: %w", name, err)
+		return nil, wrapAPIError(fmt.Sprintf("failed to create DigitalOcean firewall %q", name), resp, err)
 	}
 	return godoFirewallToInfo(fw, serverID), nil
 }
@@ -119,9 +119,9 @@ func (c *Client) UpdateFirewallRules(ctx context.Context, serverID string, rules
 		Tags:          existing.Tags,
 	}
 
-	updated, _, err := c.client.Firewalls.Update(ctx, existing.ID, req)
+	updated, resp, err := c.client.Firewalls.Update(ctx, existing.ID, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update DigitalOcean firewall %s: %w", existing.ID, err)
+		return nil, wrapAPIError(fmt.Sprintf("failed to update DigitalOcean firewall %s", existing.ID), resp, err)
 	}
 	return godoFirewallToInfo(updated, serverID), nil
 }
@@ -158,7 +158,7 @@ func (c *Client) DeleteFirewall(ctx context.Context, serverID string) error {
 		if resp != nil && resp.StatusCode == http.StatusNotFound {
 			return nil
 		}
-		return fmt.Errorf("failed to delete DigitalOcean firewall %s: %w", existing.ID, err)
+		return wrapAPIError(fmt.Sprintf("failed to delete DigitalOcean firewall %s", existing.ID), resp, err)
 	}
 	return nil
 }
@@ -181,7 +181,7 @@ func (c *Client) findManagedFirewall(ctx context.Context, dropletID int) (*godo.
 		if resp != nil && resp.StatusCode == http.StatusNotFound {
 			return nil, provider.ErrFirewallNotFound
 		}
-		return nil, fmt.Errorf("failed to list firewalls for droplet %d: %w", dropletID, err)
+		return nil, wrapAPIError(fmt.Sprintf("failed to list firewalls for droplet %d", dropletID), resp, err)
 	}
 
 	for i := range firewalls {

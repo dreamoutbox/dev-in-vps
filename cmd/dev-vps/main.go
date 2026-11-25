@@ -52,6 +52,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newSSHCmd())
 	rootCmd.AddCommand(newListCmd())
 	rootCmd.AddCommand(newDestroyCmd())
+	rootCmd.AddCommand(newFirewallCmd())
 
 	return rootCmd
 }

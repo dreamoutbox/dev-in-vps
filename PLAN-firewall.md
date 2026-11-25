@@ -132,14 +132,14 @@ The following are rejected before any API call, and every invalid arg is reporte
     - destroy removes the firewall, and destroying a droplet without a firewall succeeds.
 - Done when: the tests pass. Manual check: `dev-vps create` shows a firewall `dev-vps-<name>` in the DO console with the configured rules, and `dev-vps destroy` removes it.
 
-### Phase 5: `dev-vps firewall list <droplet_name>` [STATUS: TODO]
+### Phase 5: `dev-vps firewall list <droplet_name>` [STATUS: DONE]
 - Goal: show a droplet's inbound rules as a table, with `--json` support like `list`.
 - Tasks:
-  - [ ] Add `cmd/dev-vps/firewall.go` with `newFirewallCmd` (group command) and `newFirewallListCmd`. Register the group in `main.go`.
-  - [ ] Table columns: `RULE` (`9000-9010/tcp`), `PROTOCOL`, `PORTS` (`-` for ICMP), `SOURCES` (comma-joined). Sort TCP, then UDP, then ICMP, and by start port within each protocol. Use one rendering function, which Phase 6 reuses.
-  - [ ] Shared helper `resolveServerID(ctx, prov, nameOrID)`: look in local state first, then fall back to `ListServers`. Reuse it in `destroy.go` only if it actually removes duplicated code there.
-  - [ ] If the droplet has no firewall, print a hint: `dev-vps firewall allow <name> <rule>` creates one.
-  - [ ] Tests: table output (single port, range, ICMP, multiple sources), JSON output, unknown droplet, and a droplet without a firewall.
+  - [x] Add `cmd/dev-vps/firewall.go` with `newFirewallCmd` (group command) and `newFirewallListCmd`. Register the group in `main.go`.
+  - [x] Table columns: `RULE` (`9000-9010/tcp`), `PROTOCOL`, `PORTS` (`-` for ICMP), `SOURCES` (comma-joined). Sort TCP, then UDP, then ICMP, and by start port within each protocol. Use one rendering function, which Phase 6 reuses.
+  - [x] Shared helper `resolveServerID(ctx, prov, nameOrID)`: look in local state first, then fall back to `ListServers`. Reuse it in `destroy.go` only if it actually removes duplicated code there.
+  - [x] If the droplet has no firewall, print a hint: `dev-vps firewall allow <name> <rule>` creates one.
+  - [x] Tests: table output (single port, range, ICMP, multiple sources), JSON output, unknown droplet, and a droplet without a firewall.
 - Done when: the tests pass and `dev-vps firewall list my-droplet` shows the default rules.
 
 ### Phase 6: `dev-vps firewall allow` and `deny` with `--source` [STATUS: TODO]

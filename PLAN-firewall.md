@@ -69,19 +69,19 @@ The following are rejected before any API call, and every invalid arg is reporte
 
 ## Phases
 
-### Phase 1: Pure firewall rule logic in a new `pkg/firewall` package [STATUS: TODO]
+### Phase 1: Pure firewall rule logic in a new `pkg/firewall` package [STATUS: DONE]
 - Goal: parsing, normalizing, formatting and merging rules, with no IO and fully unit-tested.
 - Tasks:
-  - [ ] Add a `NetworkProtocol` enum (`tcp`, `udp`, `icmp`) in `pkg/types/enums.go` with tests in `enums_test.go`.
-  - [ ] `pkg/firewall/port_range.go`: `PortRange{From, To int}` with validation and `String()`, which renders `9000` or `9000-9010`.
-  - [ ] `pkg/firewall/rule.go`: `Rule{Protocol, Ports PortRange, Sources []string}`, plus `Key()` for identity and `Spec()`, which renders `9000-9010/tcp` or `icmp`.
-  - [ ] `pkg/firewall/spec.go`: `ParseRuleSpecs(args []string) ([]Rule, error)` implements the syntax table. It removes duplicates (`9000` and `9000/tcp` count as one rule) and reports all invalid args together.
-  - [ ] `pkg/firewall/source.go`: `ParseSources(values []string) ([]string, error)` handles CIDR, bare IP and `any`, rejects host bits, and normalizes and de-duplicates.
-  - [ ] `pkg/firewall/ruleset.go`:
+  - [x] Add a `NetworkProtocol` enum (`tcp`, `udp`, `icmp`) in `pkg/types/enums.go` with tests in `enums_test.go`.
+  - [x] `pkg/firewall/port_range.go`: `PortRange{From, To int}` with validation and `String()`, which renders `9000` or `9000-9010`.
+  - [x] `pkg/firewall/rule.go`: `Rule{Protocol, Ports PortRange, Sources []string}`, plus `Key()` for identity and `Spec()`, which renders `9000-9010/tcp` or `icmp`.
+  - [x] `pkg/firewall/spec.go`: `ParseRuleSpecs(args []string) ([]Rule, error)` implements the syntax table. It removes duplicates (`9000` and `9000/tcp` count as one rule) and reports all invalid args together.
+  - [x] `pkg/firewall/source.go`: `ParseSources(values []string) ([]string, error)` handles CIDR, bare IP and `any`, rejects host bits, and normalizes and de-duplicates.
+  - [x] `pkg/firewall/ruleset.go`:
     - `Allow(current, specs, sources)` and `Deny(current, specs, sources)` return the new rule set plus a change report (added, skipped, covered-by).
     - Both apply the SSH protection rules. `Deny` returns a typed `ErrSSHRuleProtected`.
-  - [ ] `pkg/firewall/defaults.go`: the built-in default specs and sources, plus `BuildDefaultRules(specs, sources []string) ([]Rule, error)`, which parses both and makes sure `22/tcp` is present.
-  - [ ] A `_test.go` file per source file, covering every row of the syntax table, every source case, every allow/deny semantics bullet, and the SSH protection cases.
+  - [x] `pkg/firewall/defaults.go`: the built-in default specs and sources, plus `BuildDefaultRules(specs, sources []string) ([]Rule, error)`, which parses both and makes sure `22/tcp` is present.
+  - [x] A `_test.go` file per source file, covering every row of the syntax table, every source case, every allow/deny semantics bullet, and the SSH protection cases.
 - Done when: `go test ./pkg/firewall/... ./pkg/types/...` is green. Nothing else uses the package yet.
 
 ### Phase 2: `firewall` section in `config.json` [STATUS: TODO]

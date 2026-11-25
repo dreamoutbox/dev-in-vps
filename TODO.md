@@ -12,13 +12,13 @@
 
 - [x] make `dev-vps list` fetch from api. to prevent stale info from other user machines.
 
-- [ ] add firewall for droplets. 
+- [x] add firewall for droplets. 
     - create firewall for each droplet. 
     - destroy firewall when droplet destroy. 
     - default ports: 22 (always), 80, 443, 8080, 8081, 3000, 8000.
 
-- [ ] add command to allow ports for a droplet. `dev-vps firewall allow <droplet_name> <port_list>`. example `dev-vps firewall allow my-droplet 9000 9001 9002`
+- [x] add command to allow ports for a droplet. `dev-vps firewall allow <droplet_name> <port_list>`. example `dev-vps firewall allow my-droplet 9000 9001 9002`
 
-- [ ] add command to deny ports for a droplet. `dev-vps firewall deny <droplet_name> <port_list>`. example `dev-vps firewall deny my-droplet 9000 9001 9002`
+- [x] add command to deny ports for a droplet. `dev-vps firewall deny <droplet_name> <port_list>`. example `dev-vps firewall deny my-droplet 9000 9001 9002`
 
-- [ ] add command to list firewall rules for a droplet. `dev-vps firewall list <droplet_name>`
+- [x] add command to list firewall rules for a droplet. `dev-vps firewall list <droplet_name>`

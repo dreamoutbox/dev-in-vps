@@ -11,6 +11,7 @@ DigitalOcean is the initial cloud provider implemented behind an extensible prov
 - **Interactive & Headless Creation**: Choose region and server size interactively from live DigitalOcean API slugs or pass flags (`--region`, `--size`, `--name`) for scripting.
 - **Dedicated SSH Key Management**: Automatically generates an Ed25519 key pair in `~/.dev-vps/.ssh/`, uploads it to DigitalOcean via API, and configures permissions (`0700`/`0600`).
 - **Automated Server Bootstrap**: Automatically provisions instances with cloud-init user-data from `~/.dev-vps/auto-setup/init.sh`.
+- **Per-Droplet Cloud Firewalls**: Automatically creates a DigitalOcean Cloud Firewall (`dev-vps-<name>`) on `create`, removes it on `destroy`, and manages inbound rules via `dev-vps firewall`.
 - **Seamless SSH Terminal**: One-command terminal connection (`dev-vps ssh [name]`) with auto-selection when only one server is active.
 - **Local State Tracking**: Tracks provisioned instances in `~/.dev-vps/state.json`.
 
@@ -28,6 +29,22 @@ Example:
 ```bash
 export DIGITALOCEAN_TOKEN="dop_v1_your_token_here"
 ```
+
+To manage per-droplet cloud firewalls, ensure your DigitalOcean API token includes firewall write scope (otherwise `dev-vps create` warns and leaves the droplet without a managed firewall).
+
+### Firewall Defaults (`~/.dev-vps/config.json`)
+New installations write a `firewall` section into `~/.dev-vps/config.json`:
+```json
+{
+  "firewall": {
+    "default_rules": ["22", "80", "443", "8080", "8081", "3000", "8000"],
+    "default_sources": ["0.0.0.0/0", "::/0"]
+  }
+}
+```
+- `default_rules` uses the same rule spec syntax as the CLI (`9000`, `9000/tcp`, `9001/udp`, `9000-9010`, `9000-9010/udp`, `icmp`). Port `5432` is not included in the built-in defaults.
+- If the `firewall` block or either key is omitted, `dev-vps` falls back to the built-in defaults shown above without rewriting existing config files.
+- Setting `"default_rules": []` opens only `22/tcp`. `dev-vps create` always includes `22/tcp` even if `default_rules` omits `22`, and validates the firewall config before creating a droplet.
 
 ---
 
@@ -124,6 +141,55 @@ Skip confirmation:
 dev-vps destroy my-devbox --force
 dev-vps destroy my-devbox -y
 ```
+Destroying a server automatically deletes its managed `dev-vps-<name>` firewall before removing the droplet.
+
+### 6. Manage Firewall Rules
+Every droplet created with `dev-vps create` gets a DigitalOcean Cloud Firewall named `dev-vps-<droplet_name>` with allow-all outbound rules (TCP, UDP, ICMP) and the configured default inbound rules. Firewalls you created manually without the `dev-vps-` prefix are never touched.
+
+List inbound rules as a table or JSON:
+```bash
+dev-vps firewall list my-droplet
+dev-vps firewall ls my-droplet
+dev-vps firewall list my-droplet --json
+```
+
+Allow rules (merges sources into existing rules; creates a firewall with `22/tcp` plus the requested rules if the droplet does not have one yet):
+```bash
+dev-vps firewall allow my-droplet 9000 icmp 9001/udp 9100-9110
+dev-vps firewall allow my-droplet 5432 --source 203.0.113.7
+dev-vps firewall allow my-droplet 9000-9010/udp icmp -s 10.0.0.0/8,2001:db8::/32
+```
+
+Deny rules (without `--source`, removes the whole rule; with `--source`, removes only those sources and deletes the rule if no sources remain; ranges match exactly and are never split):
+```bash
+dev-vps firewall deny my-droplet 9000 icmp
+dev-vps firewall deny my-droplet 5432 --source 203.0.113.7
+dev-vps firewall deny my-droplet 22 -s any
+```
+
+Rule spec syntax (case-insensitive):
+
+| Arg | Meaning |
+|---|---|
+| `9000` | TCP port 9000 (bare port or range defaults to TCP) |
+| `9000/tcp`, `9001/udp` | Single port with explicit protocol |
+| `9000-9010`, `9000-9010/udp` | Inclusive port range |
+| `icmp` | ICMP (ping) |
+
+Accepted `--source` / `-s` values (repeatable or comma-separated; omitted on `allow` uses `firewall.default_sources` or `0.0.0.0/0, ::/0`):
+- Bare IPv4 or IPv6 address (normalized to `/32` or `/128`), e.g. `203.0.113.7`
+- IPv4 or IPv6 CIDR with no host bits set, e.g. `10.0.0.0/8`, `2001:db8::/32`
+- `any` (expands to `0.0.0.0/0` and `::/0`)
+
+SSH protection (`22/tcp`):
+- `dev-vps firewall deny <droplet> 22` without `--source` is refused.
+- `dev-vps firewall deny <droplet> 22 -s <sources>` is allowed only if at least one source remains.
+- To restrict SSH to your IP only:
+```bash
+dev-vps firewall allow my-droplet 22 -s <your-ip>
+dev-vps firewall deny my-droplet 22 -s any
+```
+Warning: verify `<your-ip>` matches your actual public IP before removing broad sources, or you can lock yourself out of SSH access.
 
 ---
 
@@ -133,7 +199,7 @@ All persistent files are stored in `~/.dev-vps` (or overridden by the `DEV_VPS_H
 
 ```
 ~/.dev-vps/
-├── config.json            # Default provider, region, size, and optional API token
+├── config.json            # Default provider, region, size, firewall defaults, and optional API token
 ├── state.json             # Local registry of active dev servers
 ├── .ssh/
 │   ├── id_ed25519         # Private Ed25519 key (0600)

@@ -164,14 +164,14 @@ The following are rejected before any API call, and every invalid arg is reporte
     - no-op change (no update call).
 - Done when: the tests pass. Manual check: `allow my-droplet 9000-9002 icmp -s <my-ip>`, then `list` shows them with `<my-ip>/32`, `ping` works from your machine only, and `deny` removes them.
 
-### Phase 7: Docs [STATUS: TODO]
+### Phase 7: Docs [STATUS: DONE]
 - Goal: users can find the feature in the docs.
 - Tasks:
-  - [ ] Document the following in `README.md`:
+  - [x] Document the following in `README.md`:
     - the `firewall` config block and its fallback behavior;
     - the subcommands, the rule spec syntax (ports, ranges, `/tcp`, `/udp`, `icmp`) and the `--source` values;
     - the SSH protection rules, including the "restrict SSH to my IP" recipe.
-  - [ ] Tick the firewall items in `TODO.md`.
+  - [x] Tick the firewall items in `TODO.md`.
 - Done when: the README examples match the actual CLI `--help` output.
 
 ## Unknowns, risks, assumptions

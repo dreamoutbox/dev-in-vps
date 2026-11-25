@@ -18,6 +18,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const firewallSyntaxHelp = `Rule spec syntax (case-insensitive):
+  9000                   TCP port 9000 (bare port or range defaults to TCP)
+  9000/tcp, 9001/udp     single port with explicit protocol
+  9000-9010              inclusive TCP port range
+  9000-9010/udp          inclusive UDP port range
+  icmp                   ICMP (ping)
+
+Accepted --source (-s) values (repeatable or comma-separated):
+  203.0.113.7            bare IPv4 or IPv6 address (normalized to /32 or /128)
+  10.0.0.0/8             IPv4 or IPv6 CIDR (must not have host bits set)
+  any                    expands to 0.0.0.0/0 and ::/0`
+
 // newFirewallCmd constructs the 'dev-vps firewall' command group.
 //
 // Returns:
@@ -34,8 +46,297 @@ func newFirewallCmd() *cobra.Command {
 	}
 
 	fwCmd.AddCommand(newFirewallListCmd())
+	fwCmd.AddCommand(newFirewallAllowCmd())
+	fwCmd.AddCommand(newFirewallDenyCmd())
 
 	return fwCmd
+}
+
+// newFirewallAllowCmd constructs the 'dev-vps firewall allow <droplet_name> <rule...>' command.
+//
+// Returns:
+//   - *cobra.Command: command that opens or adds sources to inbound firewall rules.
+//
+// Example:
+//
+//	fwCmd.AddCommand(newFirewallAllowCmd())
+func newFirewallAllowCmd() *cobra.Command {
+	var rawSources []string
+
+	allowCmd := &cobra.Command{
+		Use:   "allow <droplet_name> <rule...>",
+		Short: "Allow inbound firewall rules on a dev VPS instance",
+		Long: `Opens one or more inbound firewall rules on a droplet's dev-vps firewall.
+If a rule with the same protocol and port range already exists, the sources are merged into it.
+If --source is omitted, firewall.default_sources from config (or 0.0.0.0/0, ::/0) is used.
+If the droplet has no dev-vps firewall yet, one is created with 22/tcp plus the requested rules.
+
+` + firewallSyntaxHelp + `
+
+Examples:
+  dev-vps firewall allow my-droplet 9000 icmp 9001/udp 9100-9110
+  dev-vps firewall allow my-droplet 5432 --source 203.0.113.7
+  dev-vps firewall allow my-droplet 9000-9010/udp icmp -s 10.0.0.0/8,2001:db8::/32`,
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runFirewallAllow(cmd, args[0], args[1:], rawSources, cmd.Flags().Changed("source"))
+		},
+	}
+
+	allowCmd.Flags().StringSliceVarP(&rawSources, "source", "s", nil, "source IP, CIDR, or 'any' (repeatable or comma-separated)")
+
+	return allowCmd
+}
+
+// newFirewallDenyCmd constructs the 'dev-vps firewall deny <droplet_name> <rule...>' command.
+//
+// Returns:
+//   - *cobra.Command: command that removes inbound firewall rules or specific sources.
+//
+// Example:
+//
+//	fwCmd.AddCommand(newFirewallDenyCmd())
+func newFirewallDenyCmd() *cobra.Command {
+	var rawSources []string
+
+	denyCmd := &cobra.Command{
+		Use:   "deny <droplet_name> <rule...>",
+		Short: "Deny inbound firewall rules or sources on a dev VPS instance",
+		Long: `Removes inbound firewall rules or specific sources from a droplet's dev-vps firewall.
+Without --source, the entire matching rule is removed.
+With --source, only those sources are removed (and the rule is removed if no sources remain).
+Ranges match exactly; overlapping ranges are never split.
+
+SSH protection (22/tcp):
+  - 'deny <droplet> 22' without --source is refused.
+  - 'deny <droplet> 22 -s <sources>' is allowed only if at least one source remains.
+  - To restrict SSH to your IP:
+      dev-vps firewall allow my-droplet 22 -s <your-ip>
+      dev-vps firewall deny my-droplet 22 -s any
+  - Warning: verify <your-ip> matches your actual public IP before removing broad sources,
+    or you can lock yourself out of SSH access.
+
+` + firewallSyntaxHelp + `
+
+Examples:
+  dev-vps firewall deny my-droplet 9000 icmp
+  dev-vps firewall deny my-droplet 5432 --source 203.0.113.7
+  dev-vps firewall deny my-droplet 22 -s any`,
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runFirewallDeny(cmd, args[0], args[1:], rawSources, cmd.Flags().Changed("source"))
+		},
+	}
+
+	denyCmd.Flags().StringSliceVarP(&rawSources, "source", "s", nil, "source IP, CIDR, or 'any' to remove (repeatable or comma-separated)")
+
+	return denyCmd
+}
+
+// runFirewallAllow validates inputs, merges requested rules/sources, and persists changes.
+func runFirewallAllow(cmd *cobra.Command, target string, rawSpecs []string, rawSources []string, sourceFlagSet bool) error {
+	specs, err := firewall.ParseRuleSpecs(rawSpecs)
+	if err != nil {
+		return err
+	}
+
+	var sources []string
+	if sourceFlagSet {
+		sources, err = parseExplicitSourceFlag(rawSources)
+		if err != nil {
+			return err
+		}
+	}
+
+	cfg, err := config.LoadConfig(customBaseDir)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	if !sourceFlagSet {
+		sources, err = resolveFirewallDefaultSources(cfg)
+		if err != nil {
+			return err
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+	defer cancel()
+
+	prov, err := providerFactory(cfg)
+	if err != nil {
+		return err
+	}
+
+	serverID, serverName, err := resolveServerID(ctx, prov, target)
+	if err != nil {
+		return err
+	}
+
+	fwInfo, err := prov.GetFirewall(ctx, serverID)
+	if errors.Is(err, provider.ErrFirewallNotFound) {
+		return createMissingFirewallForAllow(ctx, cmd, prov, cfg, serverID, serverName, specs, sources)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to fetch firewall for %s: %w", serverName, err)
+	}
+
+	nextRules, report := firewall.Allow(fwInfo.InboundRules, specs, sources)
+	finalRules := fwInfo.InboundRules
+	if report.HasChanges() {
+		updated, updateErr := prov.UpdateFirewallRules(ctx, serverID, nextRules)
+		if updateErr != nil {
+			return fmt.Errorf("failed to update firewall for %s: %w", serverName, updateErr)
+		}
+		finalRules = updated.InboundRules
+	}
+
+	return renderFirewallMutationOutput(cmd.OutOrStdout(), report, finalRules)
+}
+
+// createMissingFirewallForAllow initializes a new firewall with 22/tcp (default sources)
+// merged with the requested rules when a droplet does not yet have a dev-vps firewall.
+func createMissingFirewallForAllow(
+	ctx context.Context,
+	cmd *cobra.Command,
+	prov provider.Provider,
+	cfg *config.Config,
+	serverID string,
+	serverName string,
+	specs []firewall.Rule,
+	sources []string,
+) error {
+	defaultSources, err := resolveFirewallDefaultSources(cfg)
+	if err != nil {
+		return err
+	}
+
+	baseRules := []firewall.Rule{firewall.SSHRule(defaultSources)}
+	initialRules, _ := firewall.Allow(baseRules, specs, sources)
+
+	fwName := provider.FirewallNamePrefix + serverName
+	created, err := prov.CreateFirewall(ctx, serverID, fwName, initialRules)
+	if err != nil {
+		return fmt.Errorf("failed to create firewall %s: %w", fwName, err)
+	}
+
+	// Every rule on a brand-new firewall is newly added, including the required 22/tcp rule.
+	var report firewall.ChangeReport
+	for _, r := range initialRules {
+		report.Added = append(report.Added, firewall.RuleChange{
+			Rule:    r,
+			Sources: r.Sources,
+		})
+	}
+
+	cmd.Printf("Created firewall %s.\n", fwName)
+	return renderFirewallMutationOutput(cmd.OutOrStdout(), report, created.InboundRules)
+}
+
+// runFirewallDeny validates inputs, removes matching rules/sources, and persists changes.
+func runFirewallDeny(cmd *cobra.Command, target string, rawSpecs []string, rawSources []string, sourceFlagSet bool) error {
+	specs, err := firewall.ParseRuleSpecs(rawSpecs)
+	if err != nil {
+		return err
+	}
+
+	var sources []string
+	if sourceFlagSet {
+		sources, err = parseExplicitSourceFlag(rawSources)
+		if err != nil {
+			return err
+		}
+	}
+
+	cfg, err := config.LoadConfig(customBaseDir)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+	defer cancel()
+
+	prov, err := providerFactory(cfg)
+	if err != nil {
+		return err
+	}
+
+	serverID, serverName, err := resolveServerID(ctx, prov, target)
+	if err != nil {
+		return err
+	}
+
+	fwInfo, err := prov.GetFirewall(ctx, serverID)
+	if errors.Is(err, provider.ErrFirewallNotFound) {
+		return fmt.Errorf("no dev-vps firewall found for %s", serverName)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to fetch firewall for %s: %w", serverName, err)
+	}
+
+	nextRules, report, err := firewall.Deny(fwInfo.InboundRules, specs, sources)
+	if errors.Is(err, firewall.ErrSSHRuleProtected) {
+		return fmt.Errorf(
+			"%w\nTo restrict SSH to your IP instead:\n  dev-vps firewall allow %s 22 -s <your-ip>\n  dev-vps firewall deny %s 22 -s any\nWarning: verify <your-ip> is your current public IP before removing broad sources, or you may lock yourself out.",
+			err, serverName, serverName,
+		)
+	}
+	if err != nil {
+		return err
+	}
+
+	finalRules := fwInfo.InboundRules
+	if report.HasChanges() {
+		updated, updateErr := prov.UpdateFirewallRules(ctx, serverID, nextRules)
+		if updateErr != nil {
+			return fmt.Errorf("failed to update firewall for %s: %w", serverName, updateErr)
+		}
+		finalRules = updated.InboundRules
+	}
+
+	return renderFirewallMutationOutput(cmd.OutOrStdout(), report, finalRules)
+}
+
+// parseExplicitSourceFlag validates sources supplied via --source / -s before any API call.
+func parseExplicitSourceFlag(rawSources []string) ([]string, error) {
+	if len(rawSources) == 0 {
+		return nil, fmt.Errorf("--source requires at least one IP address, CIDR, or %q", firewall.SourceKeywordAny)
+	}
+	return firewall.ParseSources(rawSources)
+}
+
+// renderFirewallMutationOutput prints the change report followed by the resulting rule table.
+func renderFirewallMutationOutput(w io.Writer, report firewall.ChangeReport, rules []firewall.Rule) error {
+	renderChangeReport(w, report)
+	fmt.Fprintln(w)
+	return renderFirewallRulesTable(w, rules)
+}
+
+// renderChangeReport prints added, removed, skipped, and covered-by lines from a ChangeReport.
+func renderChangeReport(w io.Writer, report firewall.ChangeReport) {
+	for _, ch := range report.Added {
+		fmt.Fprintf(w, "Added:   %s (%s)\n", ch.Rule.Spec(), strings.Join(ch.Sources, ", "))
+	}
+	for _, ch := range report.Removed {
+		fmt.Fprintf(w, "Removed: %s (%s)\n", ch.Rule.Spec(), strings.Join(ch.Sources, ", "))
+	}
+	for _, ch := range report.Skipped {
+		if len(ch.Sources) > 0 {
+			fmt.Fprintf(w, "Skipped: %s (%s)\n", ch.Rule.Spec(), strings.Join(ch.Sources, ", "))
+			continue
+		}
+		fmt.Fprintf(w, "Skipped: %s (not open)\n", ch.Rule.Spec())
+	}
+	for _, cov := range report.CoveredBy {
+		covSpecs := make([]string, len(cov.CoveredBy))
+		for i, r := range cov.CoveredBy {
+			covSpecs[i] = r.Spec()
+		}
+		fmt.Fprintf(w, "Skipped: %s not open (covered by %s)\n", cov.Target.Spec(), strings.Join(covSpecs, ", "))
+	}
+	if !report.HasChanges() {
+		fmt.Fprintln(w, "No firewall changes applied.")
+	}
 }
 
 // newFirewallListCmd constructs the 'dev-vps firewall list <droplet_name>' subcommand.

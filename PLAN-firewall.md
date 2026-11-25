@@ -142,18 +142,18 @@ The following are rejected before any API call, and every invalid arg is reporte
   - [x] Tests: table output (single port, range, ICMP, multiple sources), JSON output, unknown droplet, and a droplet without a firewall.
 - Done when: the tests pass and `dev-vps firewall list my-droplet` shows the default rules.
 
-### Phase 6: `dev-vps firewall allow` and `deny` with `--source` [STATUS: TODO]
+### Phase 6: `dev-vps firewall allow` and `deny` with `--source` [STATUS: DONE]
 - Goal: `dev-vps firewall allow|deny <droplet_name> <rule...> [--source S...]` changes the rules as described in the Design section.
 - Tasks:
-  - [ ] Both commands take `cobra.MinimumNArgs(2)` and a `--source/-s` `StringSlice` flag. They parse specs and sources first, so invalid input causes no API call.
-  - [ ] `allow`:
+  - [x] Both commands take `cobra.MinimumNArgs(2)` and a `--source/-s` `StringSlice` flag. They parse specs and sources first, so invalid input causes no API call.
+  - [x] `allow`:
     - Use `GetFirewall`, then `firewall.Allow`, then `UpdateFirewallRules`.
     - On `ErrFirewallNotFound`, create the firewall with `22/tcp` (default sources) plus the requested rules. This also covers droplets that existed before this feature.
-  - [ ] `deny`: use `GetFirewall`, then `firewall.Deny`, then `UpdateFirewallRules`. Surface `ErrSSHRuleProtected` with a hint on how to restrict SSH instead.
-  - [ ] Skip the API write when the change report is empty, i.e. nothing changed.
-  - [ ] Print the change report (added, removed, skipped, covered-by), then the resulting rule table.
-  - [ ] Show the syntax table, the `--source` values and examples in `Long` help for both commands.
-  - [ ] Tests in `commands_test.go`:
+  - [x] `deny`: use `GetFirewall`, then `firewall.Deny`, then `UpdateFirewallRules`. Surface `ErrSSHRuleProtected` with a hint on how to restrict SSH instead.
+  - [x] Skip the API write when the change report is empty, i.e. nothing changed.
+  - [x] Print the change report (added, removed, skipped, covered-by), then the resulting rule table.
+  - [x] Show the syntax table, the `--source` values and examples in `Long` help for both commands.
+  - [x] Tests in `commands_test.go`:
     - allow `9000 icmp 9001/udp 9100-9110`;
     - allow with `-s` merging into an existing rule;
     - allow when the droplet has no firewall;

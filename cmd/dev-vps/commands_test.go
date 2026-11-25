@@ -91,6 +91,7 @@ func (m *mockProvider) CreateServer(ctx context.Context, req provider.CreateServ
 func (m *mockProvider) ListServers(ctx context.Context) ([]provider.ServerInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.callLog = append(m.callLog, "ListServers")
 	var list []provider.ServerInfo
 	for _, s := range m.servers {
 		list = append(list, *s)
@@ -136,6 +137,7 @@ func (m *mockProvider) CreateFirewall(ctx context.Context, serverID string, name
 func (m *mockProvider) GetFirewall(ctx context.Context, serverID string) (*provider.FirewallInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.callLog = append(m.callLog, "GetFirewall:"+serverID)
 	fw, ok := m.firewalls[serverID]
 	if !ok {
 		return nil, provider.ErrFirewallNotFound
@@ -146,6 +148,7 @@ func (m *mockProvider) GetFirewall(ctx context.Context, serverID string) (*provi
 func (m *mockProvider) UpdateFirewallRules(ctx context.Context, serverID string, rules []firewall.Rule) (*provider.FirewallInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.callLog = append(m.callLog, "UpdateFirewallRules:"+serverID)
 	fw, ok := m.firewalls[serverID]
 	if !ok {
 		return nil, provider.ErrFirewallNotFound

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dreamoutbox/dev-in-vps/pkg/firewall"
 	"github.com/dreamoutbox/dev-in-vps/pkg/types"
 )
 
@@ -15,6 +16,7 @@ type Config struct {
 	DefaultRegion     string             `json:"default_region"`
 	DefaultSize       string             `json:"default_size"`
 	DigitalOceanToken string             `json:"digitalocean_token,omitempty"`
+	Firewall          *FirewallConfig    `json:"firewall,omitempty"`
 }
 
 // DefaultConfig returns a new Config populated with sensible defaults.
@@ -30,6 +32,10 @@ func DefaultConfig() *Config {
 		DefaultProvider: types.ProviderDigitalOcean,
 		DefaultRegion:   "nyc1",
 		DefaultSize:     "s-2vcpu-4gb",
+		Firewall: &FirewallConfig{
+			DefaultRules:   firewall.DefaultRuleSpecs(),
+			DefaultSources: firewall.DefaultSources(),
+		},
 	}
 }
 

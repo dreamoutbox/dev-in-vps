@@ -3,11 +3,13 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
+	"github.com/dreamoutbox/dev-in-vps/pkg/firewall"
 	"github.com/dreamoutbox/dev-in-vps/pkg/types"
 )
 
@@ -196,4 +198,93 @@ func TestEnsureStartupLogging(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFirewallConfigDefaultsAndBackwardCompatibility(t *testing.T) {
+	t.Run("fresh storage writes firewall defaults block", func(t *testing.T) {
+		tempDir := t.TempDir()
+		if err := config.InitStorage(tempDir); err != nil {
+			t.Fatalf("InitStorage failed: %v", err)
+		}
+
+		cfg, err := config.LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("LoadConfig failed: %v", err)
+		}
+		if cfg.Firewall == nil {
+			t.Fatalf("expected Firewall block to be populated on fresh install")
+		}
+		if !reflect.DeepEqual(cfg.Firewall.DefaultRules, firewall.DefaultRuleSpecs()) {
+			t.Errorf("DefaultRules = %v, want %v", cfg.Firewall.DefaultRules, firewall.DefaultRuleSpecs())
+		}
+		if !reflect.DeepEqual(cfg.Firewall.DefaultSources, firewall.DefaultSources()) {
+			t.Errorf("DefaultSources = %v, want %v", cfg.Firewall.DefaultSources, firewall.DefaultSources())
+		}
+	})
+
+	t.Run("old config without firewall block loads cleanly and is not rewritten", func(t *testing.T) {
+		tempDir := t.TempDir()
+		if err := config.InitStorage(tempDir); err != nil {
+			t.Fatalf("InitStorage failed: %v", err)
+		}
+
+		legacyJSON := "{\n  \"default_provider\": \"digitalocean\",\n  \"default_region\": \"sgp1\",\n  \"default_size\": \"s-1vcpu-1gb\"\n}\n"
+		cfgPath := config.ConfigPath(tempDir)
+		if err := os.WriteFile(cfgPath, []byte(legacyJSON), 0600); err != nil {
+			t.Fatalf("failed to write legacy config: %v", err)
+		}
+
+		// Re-running InitStorage and LoadConfig must not overwrite the legacy file.
+		if err := config.InitStorage(tempDir); err != nil {
+			t.Fatalf("InitStorage on existing dir failed: %v", err)
+		}
+		cfg, err := config.LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("LoadConfig failed: %v", err)
+		}
+		if cfg.Firewall != nil {
+			t.Errorf("expected nil Firewall for legacy config, got %+v", cfg.Firewall)
+		}
+
+		afterBytes, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatalf("failed to re-read config.json: %v", err)
+		}
+		if string(afterBytes) != legacyJSON {
+			t.Errorf("expected legacy config.json not to be rewritten;\ngot:\n%s\nwant:\n%s", string(afterBytes), legacyJSON)
+		}
+	})
+
+	t.Run("explicit empty default_rules distinguishes from missing field", func(t *testing.T) {
+		tempDir := t.TempDir()
+		if err := config.InitStorage(tempDir); err != nil {
+			t.Fatalf("InitStorage failed: %v", err)
+		}
+
+		rawJSON := `{
+  "default_provider": "digitalocean",
+  "default_region": "nyc1",
+  "default_size": "s-2vcpu-4gb",
+  "firewall": {
+    "default_rules": []
+  }
+}`
+		if err := os.WriteFile(config.ConfigPath(tempDir), []byte(rawJSON), 0600); err != nil {
+			t.Fatalf("failed to write config: %v", err)
+		}
+
+		cfg, err := config.LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("LoadConfig failed: %v", err)
+		}
+		if cfg.Firewall == nil {
+			t.Fatalf("expected non-nil Firewall block")
+		}
+		if cfg.Firewall.DefaultRules == nil || len(cfg.Firewall.DefaultRules) != 0 {
+			t.Errorf("expected non-nil empty DefaultRules, got %#v", cfg.Firewall.DefaultRules)
+		}
+		if cfg.Firewall.DefaultSources != nil {
+			t.Errorf("expected nil DefaultSources when omitted, got %#v", cfg.Firewall.DefaultSources)
+		}
+	})
 }

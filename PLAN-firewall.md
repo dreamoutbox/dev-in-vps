@@ -84,13 +84,13 @@ The following are rejected before any API call, and every invalid arg is reporte
   - [x] A `_test.go` file per source file, covering every row of the syntax table, every source case, every allow/deny semantics bullet, and the SSH protection cases.
 - Done when: `go test ./pkg/firewall/... ./pkg/types/...` is green. Nothing else uses the package yet.
 
-### Phase 2: `firewall` section in `config.json` [STATUS: TODO]
+### Phase 2: `firewall` section in `config.json` [STATUS: DONE]
 - Goal: default rules and default sources are configurable, with a fallback to the built-in values.
 - Tasks:
-  - [ ] `pkg/config/firewall_config.go`: `FirewallConfig{DefaultRules []string, DefaultSources []string}` with json tags `default_rules` and `default_sources`. Add `Firewall *FirewallConfig` (json tag `firewall,omitempty`) to `Config`.
-  - [ ] Populate the block in `DefaultConfig()` from the `pkg/firewall` built-in defaults, so the values live in one place.
-  - [ ] A helper in `cmd/dev-vps` (e.g. `firewall_defaults.go`) resolves config to `[]firewall.Rule` and the default sources. A nil block or nil field means built-in defaults; an explicit empty `default_rules` means `22/tcp` only.
-  - [ ] Tests in `pkg/config/config_test.go` and `cmd/dev-vps`:
+  - [x] `pkg/config/firewall_config.go`: `FirewallConfig{DefaultRules []string, DefaultSources []string}` with json tags `default_rules` and `default_sources`. Add `Firewall *FirewallConfig` (json tag `firewall,omitempty`) to `Config`.
+  - [x] Populate the block in `DefaultConfig()` from the `pkg/firewall` built-in defaults, so the values live in one place.
+  - [x] A helper in `cmd/dev-vps` (e.g. `firewall_defaults.go`) resolves config to `[]firewall.Rule` and the default sources. A nil block or nil field means built-in defaults; an explicit empty `default_rules` means `22/tcp` only.
+  - [x] Tests in `pkg/config/config_test.go` and `cmd/dev-vps`:
     - an old config without the block loads and resolves to the built-in values;
     - a custom block with ranges, UDP and ICMP resolves correctly;
     - an invalid spec or source in config gives a clear error naming the config key;

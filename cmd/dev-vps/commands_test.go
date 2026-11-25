@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
+	"github.com/dreamoutbox/dev-in-vps/pkg/firewall"
 	"github.com/dreamoutbox/dev-in-vps/pkg/provider"
 	"github.com/dreamoutbox/dev-in-vps/pkg/sshutil"
 	"github.com/dreamoutbox/dev-in-vps/pkg/types"
@@ -23,6 +24,7 @@ type mockProvider struct {
 	regions       []provider.Region
 	sizes         []provider.Size
 	servers       map[string]*provider.ServerInfo
+	firewalls     map[string]*provider.FirewallInfo
 	keysEnsured   map[string]string
 	createdReqs   []provider.CreateServerRequest
 	deletedServer []string
@@ -39,6 +41,7 @@ func newMockProvider() *mockProvider {
 			{Slug: "s-2vcpu-4gb", VCPUs: 2, MemoryMB: 4096, DiskGB: 80, PriceMonthly: 24.0},
 		},
 		servers:     make(map[string]*provider.ServerInfo),
+		firewalls:   make(map[string]*provider.FirewallInfo),
 		keysEnsured: make(map[string]string),
 	}
 }
@@ -106,6 +109,71 @@ func (m *mockProvider) DeleteServer(ctx context.Context, id string) error {
 	delete(m.servers, id)
 	m.deletedServer = append(m.deletedServer, id)
 	return nil
+}
+
+func (m *mockProvider) CreateFirewall(ctx context.Context, serverID string, name string, rules []firewall.Rule) (*provider.FirewallInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	info := &provider.FirewallInfo{
+		ID:           "fw-" + serverID,
+		Name:         name,
+		ServerID:     serverID,
+		InboundRules: cloneMockRules(rules),
+	}
+	m.firewalls[serverID] = info
+	return cloneMockFirewallInfo(info), nil
+}
+
+func (m *mockProvider) GetFirewall(ctx context.Context, serverID string) (*provider.FirewallInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	fw, ok := m.firewalls[serverID]
+	if !ok {
+		return nil, provider.ErrFirewallNotFound
+	}
+	return cloneMockFirewallInfo(fw), nil
+}
+
+func (m *mockProvider) UpdateFirewallRules(ctx context.Context, serverID string, rules []firewall.Rule) (*provider.FirewallInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	fw, ok := m.firewalls[serverID]
+	if !ok {
+		return nil, provider.ErrFirewallNotFound
+	}
+	fw.InboundRules = cloneMockRules(rules)
+	return cloneMockFirewallInfo(fw), nil
+}
+
+func (m *mockProvider) DeleteFirewall(ctx context.Context, serverID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.firewalls, serverID)
+	return nil
+}
+
+func cloneMockFirewallInfo(fw *provider.FirewallInfo) *provider.FirewallInfo {
+	if fw == nil {
+		return nil
+	}
+	return &provider.FirewallInfo{
+		ID:           fw.ID,
+		Name:         fw.Name,
+		ServerID:     fw.ServerID,
+		InboundRules: cloneMockRules(fw.InboundRules),
+	}
+}
+
+func cloneMockRules(rules []firewall.Rule) []firewall.Rule {
+	out := make([]firewall.Rule, len(rules))
+	for i, r := range rules {
+		out[i] = firewall.Rule{
+			Protocol: r.Protocol,
+			Ports:    r.Ports,
+			Sources:  append([]string(nil), r.Sources...),
+		}
+	}
+	return out
 }
 
 func TestSSHCreateCommand(t *testing.T) {

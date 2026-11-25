@@ -97,25 +97,25 @@ The following are rejected before any API call, and every invalid arg is reporte
     - a config without `22` still gets `22/tcp`.
 - Done when: `go test ./...` is green and a fresh `--home-dir` produces `config.json` with the `firewall` block.
 
-### Phase 3: Firewall support in the provider layer [STATUS: TODO]
+### Phase 3: Firewall support in the provider layer [STATUS: DONE]
 - Goal: `provider.Provider` can create, read, replace and delete a droplet's inbound rules.
 - Tasks:
-  - [ ] Add `provider.FirewallInfo{ID, Name, ServerID, InboundRules []firewall.Rule}`, the typed `ErrFirewallNotFound` and the `FirewallNamePrefix = "dev-vps-"` constant in `pkg/provider/provider.go`.
-  - [ ] Add these interface methods to `Provider`:
+  - [x] Add `provider.FirewallInfo{ID, Name, ServerID, InboundRules []firewall.Rule}`, the typed `ErrFirewallNotFound` and the `FirewallNamePrefix = "dev-vps-"` constant in `pkg/provider/provider.go`.
+  - [x] Add these interface methods to `Provider`:
     - `CreateFirewall(ctx, serverID, name, rules)`
     - `GetFirewall(ctx, serverID)`
     - `UpdateFirewallRules(ctx, serverID, rules)`: replaces the inbound rules and keeps the name, droplets and outbound rules.
     - `DeleteFirewall(ctx, serverID)`: a no-op when no firewall exists.
-  - [ ] Implement them in `pkg/provider/digitalocean/digitalocean.go` with godo `Firewalls.Create/ListByDroplet/Update/Delete`. Use two shared mappers:
+  - [x] Implement them in `pkg/provider/digitalocean/digitalocean.go` with godo `Firewalls.Create/ListByDroplet/Update/Delete`. Use two shared mappers:
     - `firewall.Rule` to `godo.InboundRule`: ICMP gets an empty `PortRange`, a single port gets `"9000"`, a range gets `"9000-9010"`, and sources go in `Sources.Addresses`.
     - `godo.InboundRule` to `firewall.Rule`: DO's `"all"` or `"0"` port range becomes `1-65535`. Non-address sources (tags, droplet IDs) are kept as-is when writing back, so console-made sources are not erased.
-  - [ ] Add httptest handlers for `/v2/firewalls` and `/v2/firewalls/{id}` in `digitalocean_test.go`. Assert that:
+  - [x] Add httptest handlers for `/v2/firewalls` and `/v2/firewalls/{id}` in `digitalocean_test.go`. Assert that:
     - create includes outbound rules;
     - ICMP is sent without `ports`;
     - a range is sent as `"9000-9010"`;
     - update keeps outbound rules and droplet IDs;
     - the lookup skips firewalls without the `dev-vps-` prefix.
-  - [ ] Add the new methods to `mockProvider` in `cmd/dev-vps/commands_test.go`, backed by an in-memory map keyed by server ID.
+  - [x] Add the new methods to `mockProvider` in `cmd/dev-vps/commands_test.go`, backed by an in-memory map keyed by server ID.
 - Done when: `go test ./...` is green and the provider tests cover create, get (found and not found), update and delete.
 
 ### Phase 4: Create the firewall on `create`, delete it on `destroy` [STATUS: TODO]

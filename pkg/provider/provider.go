@@ -8,11 +8,19 @@ import (
 	"time"
 
 	"github.com/dreamoutbox/dev-in-vps/pkg/config"
+	"github.com/dreamoutbox/dev-in-vps/pkg/firewall"
 	"github.com/dreamoutbox/dev-in-vps/pkg/types"
 )
 
-// DevVPSTag is the cloud provider tag attached to instances provisioned by dev-vps.
-const DevVPSTag = "dev-vps"
+const (
+	// DevVPSTag is the cloud provider tag attached to instances provisioned by dev-vps.
+	DevVPSTag = "dev-vps"
+	// FirewallNamePrefix identifies cloud firewalls created and managed by dev-vps.
+	FirewallNamePrefix = "dev-vps-"
+)
+
+// ErrFirewallNotFound is returned when a server has no dev-vps managed firewall attached.
+var ErrFirewallNotFound = errors.New("firewall not found")
 
 // Region encapsulates cloud provider datacenter region metadata.
 type Region struct {
@@ -56,6 +64,14 @@ type ServerInfo struct {
 	CreatedAt        time.Time          `json:"created_at"`
 }
 
+// FirewallInfo represents a managed cloud firewall attached to a server.
+type FirewallInfo struct {
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	ServerID     string          `json:"server_id"`
+	InboundRules []firewall.Rule `json:"inbound_rules"`
+}
+
 // Provider defines the contract that cloud infrastructure adapters must implement.
 type Provider interface {
 	// Type returns the provider type enumeration.
@@ -81,6 +97,20 @@ type Provider interface {
 
 	// DeleteServer terminates and removes the server instance by its provider ID.
 	DeleteServer(ctx context.Context, id string) error
+
+	// CreateFirewall creates a managed firewall attached to the server with the given inbound rules.
+	CreateFirewall(ctx context.Context, serverID string, name string, rules []firewall.Rule) (*FirewallInfo, error)
+
+	// GetFirewall returns the dev-vps managed firewall attached to the server, or ErrFirewallNotFound.
+	GetFirewall(ctx context.Context, serverID string) (*FirewallInfo, error)
+
+	// UpdateFirewallRules replaces the inbound rules on the server's managed firewall while
+	// preserving its name, attached servers, outbound rules, and non-address sources.
+	UpdateFirewallRules(ctx context.Context, serverID string, rules []firewall.Rule) (*FirewallInfo, error)
+
+	// DeleteFirewall deletes the dev-vps managed firewall attached to the server.
+	// Returns nil if no managed firewall exists.
+	DeleteFirewall(ctx context.Context, serverID string) error
 }
 
 // ResolveDigitalOceanToken resolves the DigitalOcean API token from environment or config.
